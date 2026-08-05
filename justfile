@@ -19,6 +19,7 @@ default:
     just --list
 
 sync:
+    @if [ -d deepseek-harness ]; then rm -rf deepseek-harness; fi
     git clone --depth=1 {{ env("DEEPSEEK_HARNESS_REPO") }} ./deepseek-harness
 
 dep:
