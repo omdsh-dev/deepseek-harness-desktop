@@ -98,6 +98,12 @@ func main() {
 		Mac: application.MacWindow{
 			TitleBar: application.MacTitleBarDefault,
 		},
+		// Linux：显式钉死 WebKitGTK 硬件加速为 Always。Wails 注释（issue
+		// #2977）声称默认可能为 Never，且 GTK3 分支默认是 OnDemand——显式
+		// Always 保证渲染走 GPU 合成，避免 CPU 合成带来的内存/CPU 开销。
+		Linux: application.LinuxWindow{
+			WebviewGpuPolicy: application.WebviewGpuPolicyAlways,
+		},
 		HTML: loadingHTML,
 	})
 

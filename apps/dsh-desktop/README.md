@@ -33,6 +33,10 @@ harness（插件运行时按包名 `import()`、npm 依赖闭包），无法移�
 窗口，也不假设用户装了 node——壳用 Wails 提供窗口与守护，后端用 SEA
 （内嵌 node v26.5.0）单文件分发。详见根 README「架构」小节。
 
+WebView 渲染：macOS 的 WKWebView 默认硬件加速（无需设置）；Linux 在窗口
+选项中显式钉死 `WebviewGpuPolicyAlways`（Wails 注释称默认可能为 Never、
+GTK3 分支默认 OnDemand），保证渲染走 GPU 合成而非 CPU。
+
 ## 代码结构
 
 ```text
