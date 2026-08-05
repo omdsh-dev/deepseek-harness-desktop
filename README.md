@@ -45,7 +45,8 @@ just build-linux-app     # 完整构建（SEA + Wails 壳 + 组装 target/linux/
   WebKitGTK 开发库（Wails 壳运行依赖）；图标由 sharp（libvips + librsvg）渲染，随 npm 预编译。
 - Linux 产物 `target/linux/DSH/`：`bin/dsh-shell`（壳）、`bin/dsh-server`（SEA）、
   `config/`、`node_modules/`、`package.json`（资源，dsh-server 从 bin 上一级解析）、
-  `share/icons/dsh.png`（图标）；另有 `DSH.tar.gz` 归档。
+  `share/icons/hicolor/`（freedesktop 多尺寸图标集 16–512 + scalable SVG）；
+  另有 `DSH.tar.gz` 归档。
 
 ## 环境变量
 

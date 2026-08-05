@@ -4,7 +4,7 @@
  *   bin/dsh-server    SEA 可执行（Linux 上由 `just sea` 产出）
  *   bin/dsh-shell     Wails 壳（justfile 中 go build 输出到该位置）
  *   config/ node_modules/ package.json   运行时资源（dsh-server 从 bin 上一级解析）
- *   share/icons/dsh.png   图标（resvg 渲染 icon.svg，Linux 无 sips/iconutil）
+ *   share/icons/hicolor/   图标（freedesktop 多尺寸集 + scalable SVG）
  * 组装后打包 target/linux/DSH.tar.gz（顶层目录 DSH/）。
  *
  * 仅在 Linux 上执行：SEA（Node --build-sea）与 Wails 壳（cgo WebKitGTK）
@@ -37,15 +37,24 @@ fs.cpSync(path.join(SEA, 'node_modules'), path.join(APP, 'node_modules'), { recu
 fs.copyFileSync(path.join(SEA, 'package.json'), path.join(APP, 'package.json'))
 fs.chmodSync(path.join(APP, 'bin/dsh-server'), 0o755)
 
-// 图标：sharp（libvips + librsvg）把 icon.svg 渲染到 512x512 白底 png。
-// 不依赖 sips/iconutil（macOS 专用）；resvg-js 无法解析该 SVG（见 icon.mts
-// 用 sips 的原因），sharp 经 librsvg 可渲染。高 density 渲染后缩到画布，
-// 保持矢量清晰度；currentColor 由 librsvg 按黑色解析，观感对齐 icns。
+// 图标：freedesktop hicolor 主题多尺寸集（share/icons/hicolor/<SIZE>x<SIZE>/apps/），
+// 尺寸 16–512 共 9 档，另附 scalable SVG 源。sharp（libvips + librsvg）把
+// icon.svg 渲染为白底黑图；不依赖 sips/iconutil（macOS 专用）；resvg-js
+// 无法解析该 SVG（见 icon.mts 用 sips 的原因）。先高 density 渲染一张大图
+// 再缩放写出各尺寸，避免重复解析 SVG；currentColor 由 librsvg 按黑色解析。
+const ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512]
 const svg = fs.readFileSync(ICON_SRC)
-await sharp(svg, { density: 1440 })
-  .resize(512, 512, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
+const big = await sharp(svg, { density: 1440 })
+  .resize(1024, 1024, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
   .png()
-  .toFile(path.join(APP, 'share/icons/dsh.png'))
+  .toBuffer()
+for (const size of ICON_SIZES) {
+  const dir = path.join(APP, 'share/icons/hicolor', `${size}x${size}`, 'apps')
+  fs.mkdirSync(dir, { recursive: true })
+  await sharp(big).resize(size, size).png().toFile(path.join(dir, 'dsh.png'))
+}
+fs.mkdirSync(path.join(APP, 'share/icons/hicolor/scalable/apps'), { recursive: true })
+fs.copyFileSync(ICON_SRC, path.join(APP, 'share/icons/hicolor/scalable/apps/dsh.svg'))
 
 await $`tar -czf ${path.join(LINUX, 'DSH.tar.gz')} -C ${LINUX} DSH`
 
