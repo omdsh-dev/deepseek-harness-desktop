@@ -48,6 +48,7 @@ just build-macos-app     # 完整构建（SEA + Wails 壳 + 组装 target/DSH.ap
 just install-macos-app   # 构建并安装到 /Applications/DSH.app
 just run-macos-app       # 运行 target/DSH.app
 open target/DSH.app      # 或直接打开构建产物
+just build-linux-app     # Linux 完整构建（须在 Linux 主机上执行，见根 README）
 ```
 
 启动页面：窗口先显示内嵌的"正在启动 dsh…"HTML（非 Wails 默认空白页），

@@ -4,11 +4,13 @@ export OUTPUT_DIR := join(justfile_directory(), "target")
 #
 # 用法（仓库根执行）：
 #   just sea                构建 SEA 单文件可执行（含外置资源）
-#   just build-macos-app    完整构建（SEA + Wails 壳 + 图标 + 组装）
+#   just build-macos-app    完整构建 macOS 应用（SEA + Wails 壳 + 图标 + 组装）
 #   just install-macos-app  构建并安装到系统应用目录 /Applications
-#   just run-macos-app      运行构建产物
+#   just run-macos-app      运行 macOS 构建产物
+#   just build-linux-app    完整构建 Linux 应用（SEA + Wails 壳 + 组装，须在 Linux 上执行）
 #
-# 产物统一在仓库根 target/ 下：target/sea、target/DSH.app、target/dsh.icns。
+# 产物统一在仓库根 target/ 下：target/sea、target/DSH.app、target/dsh.icns、
+# target/linux/。
 #
 # [working-directory] 相对「本 justfile 所在目录（仓库根）」解析：
 # `deepseek-harness` 指向 deepseek-harness，`.` 即仓库根。
@@ -68,3 +70,17 @@ install-macos-app: build-macos-app
 # 运行构建产物。
 run-macos-app:
     open target/DSH.app
+
+# 组装 Linux 桌面应用 target/linux/DSH/：拷贝 SEA 资源与图标 png，壳由
+# go build 输出到 bin/dsh-shell，并打包 DSH.tar.gz（见 scripts/make-linux-app.mts）。
+# 仅在 Linux 上执行：SEA（Node --build-sea）与 Wails 壳（cgo WebKitGTK）
+# 均不支持交叉编译，产物必须由 Linux 主机产出（macOS 的 target/sea 不适用）。
+# 前置：sea。
+[working-directory("apps/dsh-desktop")]
+bundle-linux-app:
+    nubx zx scripts/make-linux-app.mts
+    go build -o {{ OUTPUT_DIR }}/linux/DSH/bin/dsh-shell .
+    chmod 755 {{ OUTPUT_DIR }}/linux/DSH/bin/dsh-shell
+
+# 完整构建：Linux 版 SEA + 组装（含壳）。
+build-linux-app: sea bundle-linux-app
