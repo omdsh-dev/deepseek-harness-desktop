@@ -26,6 +26,17 @@ quit()，不依赖 NSApplication 的 shouldTerminateAfterLastWindowClosed
 后端的 stdout 管道在解析出 URL 后仍持续排空到 EOF——防止后端写日志时
 管道缓冲填满而阻塞在 write，拖住优雅退出。
 
+## 代码结构
+
+```text
+main.go       应用装配：解析环境变量（DSH_APP_WORKSPACE / DSH_APP_PORT）、
+              创建窗口、信号处理、退出收口（等守护协程终止后端进程组）
+supervise.go  守护循环：启动后端 → 就绪后 SetURL 指向实际地址 → 异常退出
+              时退避重启（1s 起、上限 30s），应用退出时收口
+server/       子包：SEA 后端进程生命周期（Start / Process.Stop / Exit、
+              启动命令构造、URL 就绪行解析），不依赖 Wails，可独立测试
+```
+
 ## 构建
 
 构建入口在仓库根 `justfile`；构建脚本在根 `scripts/` 下
