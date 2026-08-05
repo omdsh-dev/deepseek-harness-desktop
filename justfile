@@ -10,7 +10,7 @@ export OUTPUT_DIR := join(justfile_directory(), "target")
 #   just build-linux-app    完整构建 Linux 应用（SEA + Wails 壳 + 组装，须在 Linux 上执行）
 #
 # 产物统一在仓库根 target/ 下：target/sea、target/DSH.app、target/dsh.icns、
-# target/linux/。
+# target/dsh.iconset/（macOS 多尺寸图标集）、target/linux/。
 #
 # [working-directory] 相对「本 justfile 所在目录（仓库根）」解析：
 # `deepseek-harness` 指向 deepseek-harness，`.` 即仓库根。

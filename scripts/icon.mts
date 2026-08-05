@@ -1,6 +1,9 @@
 #!/usr/bin/env zx
 /**
- * 从 apps/dsh-desktop/assets/icon.svg 生成 app 图标 target/dsh.icns（白底黑图）。
+ * 从 apps/dsh-desktop/assets/icon.svg 生成 app 图标（白底黑图）：
+ *   target/dsh.icns      app 图标（iconutil 打包）
+ *   target/dsh.iconset/  iconset 多尺寸 PNG 集合（16/32/64/128/256/512/1024，
+ *                        含 @2x，保留为产物，与 Linux hicolor 图标集对称）
  *
  * 渲染链路（组合两个渲染器的可靠面）：
  *   1. sips 渲染 SVG 黑图（sips 对黑色 fill 可靠；对蓝色有缺陷）；
@@ -18,7 +21,7 @@ const SRC = path.join(ROOT, 'apps/dsh-desktop/assets/icon.svg')
 const TMP = path.join(ROOT, '.tmp/icon')
 const PNG_CONTENT = path.join(TMP, 'content.png')
 const PNG_1024 = path.join(TMP, 'icon-1024.png')
-const ICONSET = path.join(TMP, 'icon.iconset')
+const ICONSET = path.join(ROOT, 'target/dsh.iconset')
 const OUT = path.join(ROOT, 'target/dsh.icns')
 const INK = '#000000'
 const BG = { r: 255, g: 255, b: 255, alpha: 1 }
@@ -31,6 +34,7 @@ if (!fs.existsSync(SRC)) {
 }
 
 fs.rmSync(TMP, { recursive: true, force: true })
+fs.rmSync(ICONSET, { recursive: true, force: true })
 fs.mkdirSync(TMP, { recursive: true })
 fs.mkdirSync(ICONSET, { recursive: true })
 

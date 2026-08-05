@@ -40,7 +40,8 @@ just build-linux-app     # 完整构建（SEA + Wails 壳 + 组装 target/linux/
 ```
 
 产物统一在 `target/`：`target/sea/`（SEA 产物与资源）、`target/DSH.app`（macOS 应用）、
-`target/dsh.icns`（macOS 图标）、`target/linux/`（Linux 应用）。
+`target/dsh.icns`（macOS 图标）+ `target/dsh.iconset/`（macOS 多尺寸 PNG 集 16–1024）、
+`target/linux/`（Linux 应用）。
 
 ## 目录结构
 
