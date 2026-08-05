@@ -4,6 +4,22 @@
 （`dsh-shell`）+ SEA 单文件后端（`dsh-server`，内嵌 node 的 `dsh web`），
 Web 界面内嵌在 Webview 窗口里，不依赖外部浏览器。支持 macOS 与 Linux。
 
+## 架构：为什么是三层
+
+桌面应用由三层组成，每一层都是 dsh 运行机制的必然结果：
+
+| 层 | 产物 | 职责 | 为什么需要 |
+|---|---|---|---|
+| 壳 | `dsh-shell`（Wails v3，Go） | 原生窗口 + WebView；后端进程守护（启动/就绪/退避重启/退出清理） | node 进程不提供原生桌面窗口，壳是应用的唯一入口 |
+| 后端 | `dsh-server`（SEA，内嵌 node v26.5.0 的 `dsh web`） | 跑 dsh 的 cordis 插件树，HTTP 伺服前端与 API | dsh 是 node/TypeScript 的 cordis 插件化 harness，插件在运行时按字符串包名 `import()`、依赖 npm 闭包——只能在 node 上运行，Go 无法替代 |
+| 前端 | `dsh-frontend`（apps/web 的 vite dist） | 浏览器 UI，由 `dsh web` 经 HTTP 伺服，WebView 加载 | UI 是浏览器应用，且 `dsh web` 经 HTTP 注入 `__DSH_BOOT__` 引导，无法脱离后端直接打开 |
+
+三个关键点：
+
+- **必须依赖 node**：dsh 的 cordis 插件树（TS/ESM/npm 生态）只能在 node 运行时上跑，桌面 app 不能假设用户系统装了 node，因此用 SEA（Node Single Executable Application，`--build-sea`）把 node 内嵌进单文件可执行（v26.5.0）。
+- **必须走 HTTP**：`dsh web` 以 HTTP 伺服前端与 API（`httpServer` 服务、`__DSH_BOOT__` 注入），壳的 WebView 加载 `http://127.0.0.1:<port>`，端口由 OS 分配避免冲突。
+- **壳必须存在**：node 后端不提供原生窗口；壳承担窗口生命周期、后端守护，并在退出时终止后端进程组，不留孤儿 node。
+
 ## 快速开始
 
 依赖（[mise](https://mise.jdx.dev) 管理）：`just`、`go`、`nub`，见 [mise.toml](./mise.toml)。

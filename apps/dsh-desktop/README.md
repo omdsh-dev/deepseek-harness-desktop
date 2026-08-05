@@ -26,6 +26,13 @@ quit()，不依赖 NSApplication 的 shouldTerminateAfterLastWindowClosed
 后端的 stdout 管道在解析出 URL 后仍持续排空到 EOF——防止后端写日志时
 管道缓冲填满而阻塞在 write，拖住优雅退出。
 
+为什么要三层（壳 + 后端 + Web 前端）：dsh 是跑在 node 上的 cordis 插件化
+harness（插件运行时按包名 `import()`、npm 依赖闭包），无法移植到 Go，所以
+后端必须是 node 进程；`dsh web` 又以 HTTP 伺服前端与 API（含 `__DSH_BOOT__`
+注入），WebView 只能经 HTTP 加载，前端因此是独立一层。node 进程不提供原生
+窗口，也不假设用户装了 node——壳用 Wails 提供窗口与守护，后端用 SEA
+（内嵌 node v26.5.0）单文件分发。详见根 README「架构」小节。
+
 ## 代码结构
 
 ```text
