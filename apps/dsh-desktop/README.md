@@ -50,15 +50,19 @@ just run-macos-app       # 运行 target/DSH.app
 open target/DSH.app      # 或直接打开构建产物
 ```
 
-环境变量（加载前读取，窗口/后端启动前生效）：
+启动页面：窗口先显示内嵌的"正在启动 dsh…"HTML（非 Wails 默认空白页），
+后端就绪后自动切到真实地址。
+
+## 环境变量
+
+壳（加载前读取，窗口/后端启动前生效）：
 - `DSH_APP_WORKSPACE` — 工作目录（默认用户主目录；受限/测试环境可覆盖）
 - `DSH_APP_PORT` — 后端监听端口（默认 `0` 由 OS 分配随机端口，避免冲突；
   显式指定则固定复用该端口）
 
-启动页面：窗口先显示内嵌的"正在启动 dsh…"HTML（非 Wails 默认空白页），
-后端就绪后自动切到真实地址。
-
-用户环境：启动 dsh-server 前按 `$SHELL` source 用户 shell 配置
+后端（dsh-server）继承的环境变量：启动前按 `$SHELL` source 用户 shell 配置
 （bash → `~/.bashrc`，zsh → `~/.zshrc`），使后端继承用户终端里 export 的
-环境变量（如 API key）。source 输出重定向到 /dev/null，不污染后端 stdout；
-用 `exec` 保持同一进程（PID 不变），守护 wait 语义不受影响。
+变量；source 输出重定向到 /dev/null，不污染后端 stdout；用 `exec` 保持
+同一进程（PID 不变），守护 wait 语义不受影响。常用透传变量：
+- `DSH_HOME` — 个人配置目录：`$DSH_HOME/config.yaml` 配置覆盖、`$DSH_HOME/.env` 凭据
+- `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` — LLM 凭据（也可放调用目录 `.env`）

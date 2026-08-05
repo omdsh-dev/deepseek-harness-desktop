@@ -30,3 +30,12 @@ just run-macos-app       # 运行 target/DSH.app
   `apps/web/dist`。`dsh web` 启动时经 `require.resolve('@deepseek-ai/dsh-frontend/dist/index.html')`
   解析该产物——缺失时后端启动即报 `dsh: frontend dist not built` 退出，表现为窗口停在启动页/空白。
 - 构建命令统一带 `-macos-app` 后缀；`default` 列出全部 recipe（`just --list`）。
+
+## 环境变量
+
+- 构建期：`DEEPSEEK_HARNESS_REPO` — `just sync` 拉取上游 deepseek-harness 的仓库地址
+- 运行时（壳 `dsh-shell`）：`DSH_APP_WORKSPACE`（工作目录）、`DSH_APP_PORT`（后端端口），
+  详见 [dsh-desktop README](apps/dsh-desktop/README.md)
+- 透传给后端（`dsh-server`）：`DSH_HOME`（`$DSH_HOME/config.yaml` 配置覆盖、`$DSH_HOME/.env` 凭据）、
+  `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`（LLM 凭据）。壳启动后端前 source 用户 shell 配置，
+  使这些变量从终端环境继承；也可放调用目录 `.env`
