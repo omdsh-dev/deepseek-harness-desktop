@@ -3,10 +3,10 @@ export OUTPUT_DIR := join(justfile_directory(), "target")
 # deepseek-harness-desktop 构建入口。
 #
 # 用法（仓库根执行）：
-#   just sea             构建 SEA 单文件可执行（含外置资源）
-#   just build           完整构建（SEA + Wails 壳 + 图标 + 组装）
-#   just install         构建并安装到系统应用目录 /Applications
-#   just run             运行构建产物
+#   just sea                构建 SEA 单文件可执行（含外置资源）
+#   just build-macos-app    完整构建（SEA + Wails 壳 + 图标 + 组装）
+#   just install-macos-app  构建并安装到系统应用目录 /Applications
+#   just run-macos-app      运行构建产物
 #
 # 产物统一在仓库根 target/ 下：target/sea、target/DSH.app、target/dsh.icns。
 #

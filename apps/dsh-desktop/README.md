@@ -32,11 +32,11 @@ quit()，不依赖 NSApplication 的 shouldTerminateAfterLastWindowClosed
 （TypeScript + [zx](https://google.github.io/zx/)）。从仓库根执行：
 
 ```sh
-just sea       # 构建 SEA 单文件可执行（含外置资源）
-just build     # 完整构建（SEA + Wails 壳 + 组装 build/DSH.app）
-just install   # 构建并安装到 /Applications/DSH.app
-just run       # 运行 build/DSH.app
-open build/DSH.app         # 或直接打开构建产物
+just sea                 # 构建 SEA 单文件可执行（含外置资源）
+just build-macos-app     # 完整构建（SEA + Wails 壳 + 组装 target/DSH.app）
+just install-macos-app   # 构建并安装到 /Applications/DSH.app
+just run-macos-app       # 运行 target/DSH.app
+open target/DSH.app      # 或直接打开构建产物
 ```
 
 环境变量（加载前读取，窗口/后端启动前生效）：
