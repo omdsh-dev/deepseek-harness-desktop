@@ -20,7 +20,7 @@ default:
 
 sync:
     @if [ -d deepseek-harness ]; then rm -rf deepseek-harness; fi
-    git clone --depth=1 {{ env("DEEPSEEK_HARNESS_REPO") }} ./deepseek-harness
+    git clone --depth=1 {{ if env("DEEPSEEK_HARNESS_REPO_BRANCH", "") != "" { "-b " + env("DEEPSEEK_HARNESS_REPO_BRANCH") + " " } else { "" } }}{{ env("DEEPSEEK_HARNESS_REPO") }} ./deepseek-harness
 
 dep:
     nub install

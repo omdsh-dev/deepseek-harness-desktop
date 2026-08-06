@@ -67,7 +67,8 @@ just build-linux-app     # 完整构建（SEA + Wails 壳 + 组装 target/linux/
 
 ## 环境变量
 
-- 构建期：`DEEPSEEK_HARNESS_REPO` — `just sync` 拉取上游 deepseek-harness 的仓库地址
+- 构建期：`DEEPSEEK_HARNESS_REPO` — `just sync` 拉取上游 deepseek-harness 的仓库地址；
+  可选 `DEEPSEEK_HARNESS_REPO_BRANCH` — 设置后 `just sync` 以 `-b <分支>` 拉取指定分支
 - 运行时（壳 `dsh-shell`）：`DSH_APP_WORKSPACE`（工作目录）、`DSH_APP_PORT`（后端端口），
   详见 [dsh-desktop README](apps/dsh-desktop/README.md)
 - 透传给后端（`dsh-server`）：`DSH_HOME`（`$DSH_HOME/config.yaml` 配置覆盖、`$DSH_HOME/.env` 凭据）、
