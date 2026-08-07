@@ -8,3 +8,6 @@ mise.*.toml
 
 deepseek-harness/
 deepseek-harness-*/
+
+
+nub.lock
