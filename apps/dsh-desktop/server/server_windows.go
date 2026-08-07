@@ -28,6 +28,9 @@ const (
 func command(exeDir, port string) *exec.Cmd {
 	server := filepath.Join(exeDir, Name)
 	cmd := exec.Command(server, "web", "--port", port)
+	if tsx := tsxLoaderEnv(exeDir); tsx != "" {
+		cmd.Env = append(os.Environ(), "NODE_OPTIONS="+tsx)
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: createNewProcessGroup | createNoWindow,
 	}

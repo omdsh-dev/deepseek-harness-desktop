@@ -54,6 +54,9 @@ func command(exeDir, port string) *exec.Cmd {
 	} else {
 		cmd = exec.Command(server, args...)
 	}
+	if tsx := tsxLoaderEnv(exeDir); tsx != "" {
+		cmd.Env = append(os.Environ(), "NODE_OPTIONS="+tsx)
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	return cmd
 }

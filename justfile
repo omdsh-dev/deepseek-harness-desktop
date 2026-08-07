@@ -111,3 +111,9 @@ build-windows-app: sea bundle-windows-app
 clean:
     rm -f nub.lock;
     rm -rf node_modules;
+
+dsh *args:
+    node \
+        --expose-internals \
+        --import ./node_modules/tsx/dist/esm/index.mjs \
+        deepseek-harness/apps/cli/src/bin.ts {{ args }}

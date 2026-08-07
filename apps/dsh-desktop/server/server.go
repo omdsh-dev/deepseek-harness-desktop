@@ -13,11 +13,34 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
+
+// tsxLoaderEnv 构造注入 tsx ESM loader 的 NODE_OPTIONS 值。
+// dsh 的 cordis 插件机制在源码模式依赖 tsx 的 transform hook（workflow worker
+// 的未打包分支、dsh-sdk dev runtime、Windows directory-picker worker 等）；
+// 打包产物的 node_modules 已随 SEA 实体化（Contents/node_modules/tsx，含
+// esbuild 平台二进制），启动时经 NODE_OPTIONS 的 --import 注册 loader，让任何
+// 动态 .ts 加载路径可用。副作用：dsh-server spawn 的 node 子进程会继承
+// NODE_OPTIONS——tsx hook 只 transform .ts 模块，对纯 JS 子进程无行为影响。
+// 返回空串表示产物无 tsx（不应发生），调用方不设置 NODE_OPTIONS。
+func tsxLoaderEnv(exeDir string) string {
+	loader := filepath.Join(exeDir, "..", "node_modules", "tsx", "dist", "esm", "index.mjs")
+	if _, err := os.Stat(loader); err != nil {
+		return ""
+	}
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(loader)}
+	flag := "--import=" + u.String()
+	if prev := os.Getenv("NODE_OPTIONS"); prev != "" {
+		return prev + " " + flag
+	}
+	return flag
+}
 
 // readyPrefix 是后端就绪行前缀；壳从此解析实际监听 URL。
 const readyPrefix = "dsh web: "

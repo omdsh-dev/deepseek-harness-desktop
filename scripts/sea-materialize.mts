@@ -29,15 +29,18 @@ function pkgJsonOf(dir: string): Record<string, any> | null {
   }
 }
 
-function depsOf(pkg: Record<string, any> | null): string[] {
-  const out: string[] = []
+/** 包的运行时依赖声明（name → semver range）；devDependencies 不参与运行时闭包。 */
+function depRangesOf(pkg: Record<string, any> | null): Map<string, string> {
+  const out = new Map<string, string>()
   for (const k of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
-    for (const d of Object.keys(pkg?.[k] ?? {})) out.push(d)
+    for (const [d, r] of Object.entries(pkg?.[k] ?? {})) out.set(d, r)
   }
   return out
 }
 
-/** 复制一个本地包（workspace/vendor）的运行时面：lib + dist + assets + package.json。 */
+/** 复制一个本地包（workspace/vendor）的运行时面：lib + dist + assets + package.json。
+ *  bundle 包（package.json 的 dsh.bundle.patch）的 patch 文件（如 cordis.patch.yml）
+ *  是 dsh 启动时 loadProfile 必读的运行时文件，一并复制。 */
 function copyLocalPkg(name: string, srcDir: string): Record<string, any> | null {
   const dstDir = path.join(DST, ...name.split('/'))
   fs.mkdirSync(dstDir, { recursive: true })
@@ -47,7 +50,17 @@ function copyLocalPkg(name: string, srcDir: string): Record<string, any> | null 
       fs.cpSync(path.join(srcDir, d), path.join(dstDir, d), { recursive: true })
     }
   }
-  return pkgJsonOf(srcDir)
+  const pkg = pkgJsonOf(srcDir)
+  const bundlePatch = pkg?.dsh?.bundle?.patch
+  if (typeof bundlePatch === 'string' && bundlePatch) {
+    const src = path.join(srcDir, bundlePatch)
+    if (fs.existsSync(src)) {
+      const dst = path.join(dstDir, bundlePatch)
+      fs.mkdirSync(path.dirname(dst), { recursive: true })
+      fs.copyFileSync(src, dst)
+    }
+  }
+  return pkg
 }
 
 // ── 1) 资源文件：config 与 package.json ──────────────────────────────────────
@@ -61,8 +74,13 @@ fs.copyFileSync(path.join(CLI, 'package.json'), path.join(SEA, 'package.json'))
 fs.mkdirSync(DST, { recursive: true })
 
 // ── 2) node_modules 实体化 ───────────────────────────────────────────────────
+// 扁平布局（目标 node_modules 每包一份）：同一依赖名在闭包内只能落地一个版本，
+// 复制顺序由依赖声明驱动——闭包内所有运行时消费者对同一包名声明兼容范围时，
+// 首个满足者即全局一致解；冲突（多版本并存）时保留先复制的并告警。
+// BFS 队列按父包声明的 semver range 从 .store 匹配版本，杜绝"取 .store 任意
+// 第一个目录"导致的版本错配（如 ajv@6 顶替 peer 要求的 ajv@8）。
 const done = new Set<string>()
-const seen = new Set<string>()
+const seen = new Map<string, string>() // name@version → 已复制的 srcDir
 const queue: { name: string; pkg: Record<string, any> | null }[] = []
 
 // workspace 包（packages/*/*）
@@ -91,29 +109,103 @@ for (const dir of fs.globSync(path.join(ROOT, 'deepseek-harness/vendor', '*'))) 
   queue.push({ name, pkg })
 }
 
-// npm 依赖闭包：从 nub 的 .store 实体复制
+/** 把版本字符串解析成数字三元组（忽略 pre-release / build 元数据）。 */
+function versionTuple(v: string): [number, number, number] {
+  const [a, b, c] = v.split(/[-+]/)[0].split('.').map(n => parseInt(n, 10))
+  return [a || 0, b || 0, c || 0]
+}
+
+/** 极简 semver 单段匹配：精确、部分版本（1 / 1.2 / 1.2.x）、^、~、比较符、*。
+ *  无法解析的 range 保守放行（返回 true），避免闭包因未知语法整体失败。 */
+function matchOne(version: string, r: string): boolean {
+  r = r.trim()
+  if (r === '*' || r === '') return true
+  const m = r.match(/^(\^|~|>=|<=|>|<|=)?\s*v?(\d+|\*|x|X)(?:\.(\d+|\*|x|X))?(?:\.(\d+|\*|x|X))?$/)
+  if (!m) return true
+  const op = m[1] ?? '='
+  const t = m.slice(2).map(s => (s == null || s === '*' || s === 'x' || s === 'X') ? null : Number(s))
+  const v = versionTuple(version)
+  const full = t[0] !== null && t[1] !== null && t[2] !== null
+  const cmp = (n: number, tn: number | null): number => (tn === null ? 0 : n - tn)
+  const c = cmp(v[0], t[0]) || cmp(v[1], t[1]) || cmp(v[2], t[2])
+  switch (op) {
+    case '=':
+      if (full) return c === 0
+      if (t[1] === null) return v[0] === t[0]
+      if (t[2] === null) return v[0] === t[0] && v[1] === t[1]
+      return v[0] === t[0] && v[1] === t[1] && v[2] === t[2]
+    case '>': return c > 0
+    case '<': return c < 0
+    case '>=': return c >= 0
+    case '<=': return c <= 0
+    case '^': {
+      if (t[0] === null) return true
+      const vv = versionTuple(version)
+      if (t[0] > 0) return c >= 0 && vv[0] < t[0] + 1
+      if ((t[1] ?? 0) > 0) return c >= 0 && vv[1] < (t[1] ?? 0) + 1
+      return c >= 0 && vv[2] < (t[2] ?? 0) + 1
+    }
+    case '~': {
+      if (t[0] === null) return true
+      const vv = versionTuple(version)
+      if (t[1] === null) return c >= 0 && vv[0] < t[0] + 1
+      return c >= 0 && vv[1] < t[1] + 1
+    }
+    default: return true
+  }
+}
+
+/** 匹配 semver range：支持 || 与空白 AND。 */
+function satisfies(version: string, range: string): boolean {
+  for (const alt of range.split('||')) {
+    const ands = alt.split(/\s+/).filter(Boolean)
+    if (ands.every(r => matchOne(version, r))) return true
+  }
+  return false
+}
+
+// npm 依赖闭包：从 nub 的 .store 实体复制（版本感知）
 let npmCopied = 0
 while (queue.length) {
   const { name, pkg } = queue.shift()!
-  for (const dep of depsOf(pkg)) {
+  for (const [dep, range] of depRangesOf(pkg)) {
     if (dep.startsWith('node:') || dep.startsWith('@types/')) continue
-    if (done.has(dep) || seen.has(dep)) continue
-    seen.add(dep)
+    if (dep.startsWith('workspace:') || done.has(dep)) continue
     const esc = dep.replace(/\//g, '+')
+    // esc 含 '+'（包名 '/' 的转义），在正则里是量词，须转义。
+    const escRe = esc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const matches = fs.globSync(path.join(STORE, `${esc}@*`))
+      .map(dir => {
+        const m = path.basename(dir).match(new RegExp(`^${escRe}@([^_]+)`))
+        return { dir, version: m?.[1] ?? '' }
+      })
+      .filter(x => satisfies(x.version, range))
     if (!matches.length) {
-      console.warn(`[warn] npm 依赖 ${dep} 不在 .store 中，跳过`)
+      console.warn(`[warn] npm 依赖 ${dep}（需要 ${range}）在 .store 中无匹配版本，跳过`)
       continue
     }
-    const srcDir = path.join(matches[0], 'node_modules', dep)
+    const hit = matches[0]
+    const key = `${dep}@${hit.version}`
+    if (seen.has(key)) continue
+    const srcDir = path.join(hit.dir, 'node_modules', dep)
     if (!fs.existsSync(srcDir)) {
       console.warn(`[warn] npm 依赖 ${dep} 无实体，跳过`)
       continue
     }
+    seen.set(key, srcDir)
     const dstDir = path.join(DST, ...dep.split('/'))
-    fs.mkdirSync(path.dirname(dstDir), { recursive: true })
-    fs.cpSync(srcDir, dstDir, { recursive: true })
-    npmCopied++
+    const existing = fs.existsSync(dstDir) ? pkgJsonOf(dstDir) : null
+    if (existing) {
+      // 扁平布局同名冲突：版本不同则保留先复制的（首个满足者），版本相同则复用。
+      if (existing.version !== hit.version) {
+        console.warn(`[warn] 扁平布局下 ${dep} 多版本并存（已复制 ${existing.version}，跳过 ${hit.version}）`)
+        continue
+      }
+    } else {
+      fs.mkdirSync(path.dirname(dstDir), { recursive: true })
+      fs.cpSync(srcDir, dstDir, { recursive: true })
+      npmCopied++
+    }
     queue.push({ name: dep, pkg: pkgJsonOf(srcDir) })
   }
 }
