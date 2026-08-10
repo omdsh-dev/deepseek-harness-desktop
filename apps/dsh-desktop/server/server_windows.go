@@ -3,6 +3,7 @@
 package server
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"

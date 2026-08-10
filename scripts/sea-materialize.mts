@@ -40,12 +40,14 @@ function depRangesOf(pkg: Record<string, any> | null): Map<string, string> {
 
 /** 复制一个本地包（workspace/vendor）的运行时面：lib + dist + assets + package.json。
  *  bundle 包（package.json 的 dsh.bundle.patch）的 patch 文件（如 cordis.patch.yml）
- *  是 dsh 启动时 loadProfile 必读的运行时文件，一并复制。 */
+ *  是 dsh 启动时 loadProfile 必读的运行时文件，一并复制。native 平台包（如
+ *  @deepseek-ai/node-addon-landlock-run-linux-x64）的预编译二进制在 bin/ 下，
+ *  launcherPath() 运行时从平台包解析 bin/landlock-run，须一并复制。 */
 function copyLocalPkg(name: string, srcDir: string): Record<string, any> | null {
   const dstDir = path.join(DST, ...name.split('/'))
   fs.mkdirSync(dstDir, { recursive: true })
   fs.copyFileSync(path.join(srcDir, 'package.json'), path.join(dstDir, 'package.json'))
-  for (const d of ['lib', 'dist', 'assets']) {
+  for (const d of ['lib', 'dist', 'assets', 'bin']) {
     if (fs.existsSync(path.join(srcDir, d))) {
       fs.cpSync(path.join(srcDir, d), path.join(dstDir, d), { recursive: true })
     }
@@ -87,6 +89,17 @@ const queue: { name: string; pkg: Record<string, any> | null }[] = []
 for (const dir of fs.globSync(path.join(ROOT, 'deepseek-harness/packages', '*', '*'))) {
   const pkg = pkgJsonOf(dir)
   if (!pkg?.name?.startsWith('@deepseek-ai/')) continue
+  copyLocalPkg(pkg.name, dir)
+  done.add(pkg.name)
+  queue.push({ name: pkg.name, pkg })
+}
+
+// native 子仓库的 workspace 包（native/*/packages/*）：如 landlock-run 的
+// entry JS seam 与 linux-* 平台二进制包，作为 sandbox 的依赖被引用，须随
+// 资源实体化（launcherPath() 运行时从平台包解析 bin/landlock-run）。
+for (const dir of fs.globSync(path.join(ROOT, 'deepseek-harness/native', '*', 'packages', '*'))) {
+  const pkg = pkgJsonOf(dir)
+  if (!pkg?.name) continue
   copyLocalPkg(pkg.name, dir)
   done.add(pkg.name)
   queue.push({ name: pkg.name, pkg })

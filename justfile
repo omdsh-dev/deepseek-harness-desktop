@@ -26,21 +26,30 @@ sync:
 dep:
     nub install
 
+export OPENSSL_CONF := '/dev/null'
+
 # 编译 deepseek-harness 的 lib 产物（sea 的前置；已有产物时由 just 增量跳过）。
 # 对齐上游 `pnpm run build`（build:lib = tsc -b + tsdown；build:web = dsh-frontend
 # 的 vite build，产出 apps/web/dist）。dsh web 启动时经
 # require.resolve('@deepseek-ai/dsh-frontend/dist/index.html') 解析该产物，
 # 缺失则后端启动即报 "frontend dist not built" 退出。vite 需在 apps/web 目录
 # 运行（index.html 与 vite.config.ts 所在），故用 cd 切目录。
-[working-directory("deepseek-harness")]
-build-libs:
-    OPENSSL_CONF=/dev/null nubx tsc -b && OPENSSL_CONF=/dev/null nubx tsdown && cd apps/web && OPENSSL_CONF=/dev/null nubx vite build
+build: dep-update (build-lib "host") (build-lib "client") build-web
 
-# 构建 SEA 单文件可执行：tsdown exe 内联 JS 依赖（--build-sea），
-# 再实体化外置的运行时资源（config / package.json / 插件 node_modules）。
-# 产物：target/sea/bin/dsh
-sea: build-libs
-    OPENSSL_CONF=/dev/null nubx tsdown -c tsdown.sea.config.ts
+[working-directory("deepseek-harness")]
+dep-update:
+    nub install
+
+[working-directory("deepseek-harness")]
+build-lib scope:
+    nub run build:lib:{{ scope }}
+
+[working-directory("deepseek-harness")]
+build-web:
+    nub --filter @deepseek-ai/dsh-frontend run build
+
+sea: build
+    nubx tsdown -c tsdown.sea.config.ts
     nubx zx scripts/sea-materialize.mts
     @echo "SEA 产物: target/sea/bin/dsh"
 
@@ -112,8 +121,9 @@ clean:
     rm -f nub.lock;
     rm -rf node_modules;
 
+[working-directory("deepseek-harness")]
 dsh *args:
     node \
         --expose-internals \
-        --import ./node_modules/tsx/dist/esm/index.mjs \
-        deepseek-harness/apps/cli/src/bin.ts {{ args }}
+        --import tsx/esm \
+        ./apps/cli/lib/bin.js {{ args }}
