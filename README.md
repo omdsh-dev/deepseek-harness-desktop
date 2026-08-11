@@ -1,6 +1,8 @@
 # deepseek-harness-desktop
 
-为 [deepseek-harness](deepseek-harness/) 打包桌面应用：Wails v3 壳
+为 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 打包桌面应用：
+上游以 npm 包 [@deepseek-ai/dsh](https://www.npmjs.com/package/@deepseek-ai/dsh)
+（版本见 [package.json](./package.json)）提供，本仓库直接安装并打包为 Wails v3 壳
 （`dsh-shell`）+ SEA 单文件后端（`dsh-server`，内嵌 node 的 `dsh web`），
 Web 界面内嵌在 Webview 窗口里，不依赖外部浏览器。支持 macOS、Linux 与 Windows。
 
@@ -23,6 +25,8 @@ Web 界面内嵌在 Webview 窗口里，不依赖外部浏览器。支持 macOS�
 ## 快速开始
 
 依赖（[mise](https://mise.jdx.dev) 管理）：`just`、`go`、`nub`，见 [mise.toml](./mise.toml)。
+上游 dsh 通过 npm 安装（`@deepseek-ai/dsh@0.0.1-rc.1` 在 package.json devDependencies，
+`just sea` 内的 `just dep` 即 `nub install`），不需要克隆上游源码。
 
 macOS：
 
@@ -56,13 +60,17 @@ just build-windows-app   # 完整构建（SEA + Wails 壳 + 组装 target/window
   `sea-materialize.mts`（SEA 运行时资源实体化）、`make-macos-app.mts`（macOS 组装）、
   `make-linux-app.mts`（Linux 组装）、`make-windows-app.mts`（Windows 组装）、
   `icon.mts`（macOS 图标生成）
-- `deepseek-harness/` — 上游源代码（已 gitignore，**严禁修改**，见 [AGENTS.md](./AGENTS.md)）
+- `deepseek-harness/` — 旧版克隆的上游源码（已 gitignore，构建不再使用，可删除）
 
 ## 构建说明
 
-- `just sea` 依赖 `build-libs`：编译上游 lib（tsc + tsdown），并 `vite build` 产出前端
-  `apps/web/dist`。`dsh web` 启动时经 `require.resolve('@deepseek-ai/dsh-frontend/dist/index.html')`
-  解析该产物——缺失时后端启动即报 `dsh: frontend dist not built` 退出，表现为窗口停在启动页/空白。
+- `just sea` 依赖 `just dep`（`nub install`）安装 npm 发布的
+  `@deepseek-ai/dsh@0.0.1-rc.1` 及其依赖闭包；`sea-materialize.mts` 从该包复制
+  config 与 package.json，并从 `node_modules/.store` 实体化插件闭包到
+  `target/sea/node_modules`；tsdown 再内联 `node_modules/@deepseek-ai/dsh/lib/bin.js`
+  为 SEA 单文件。`dsh web` 启动时经 `require.resolve('@deepseek-ai/dsh-frontend/dist/index.html')`
+  解析前端 dist（npm 包内含）——缺失时后端启动即报 `dsh: frontend dist not built`
+  退出，表现为窗口停在启动页/空白。
 - macOS 构建命令带 `-macos-app` 后缀；Linux 构建命令带 `-linux-app` 后缀；Windows 构建
   命令带 `-windows-app` 后缀；`default` 列出全部 recipe（`just --list`）。
 - **Linux 构建须在 Linux 主机上执行**：SEA（Node `--build-sea`）与 Wails 壳（cgo WebKitGTK）
@@ -84,8 +92,7 @@ just build-windows-app   # 完整构建（SEA + Wails 壳 + 组装 target/window
 
 ## 环境变量
 
-- 构建期：`DEEPSEEK_HARNESS_REPO` — `just sync` 拉取上游 deepseek-harness 的仓库地址；
-  可选 `DEEPSEEK_HARNESS_REPO_BRANCH` — 设置后 `just sync` 以 `-b <分支>` 拉取指定分支
+- 构建期：无（上游以 npm 包提供；升级 dsh 即改 package.json 中 `@deepseek-ai/dsh` 版本后 `just dep`）
 - 运行时（壳 `dsh-shell`）：`DSH_APP_WORKSPACE`（工作目录）、`DSH_APP_PORT`（后端端口），
   详见 [dsh-desktop README](apps/dsh-desktop/README.md)
 - 透传给后端（`dsh-server`）：`DSH_HOME`（`$DSH_HOME/config.yaml` 配置覆盖、`$DSH_HOME/.env` 凭据）、

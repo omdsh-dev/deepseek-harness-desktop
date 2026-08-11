@@ -31,4 +31,6 @@ try {
 }
 
 // dsh CLI 入口：静态依赖，随 SEA 内联；其顶层代码即 dsh 的 main。
-await import('../deepseek-harness/apps/cli/lib/types/bin.js')
+// 从 npm 发布的 @deepseek-ai/dsh 包（node_modules）取 lib/bin.js，
+// 不再从上游源码树（deepseek-harness/apps/cli/lib/types/）取构建产物。
+await import('../node_modules/@deepseek-ai/dsh/lib/bin.js')

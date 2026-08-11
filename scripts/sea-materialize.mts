@@ -2,21 +2,31 @@
 /**
  * dsh SEA 运行时资源实体化。
  *
- * tsdown 的 exe 功能把 cli 入口及其静态依赖内联进单文件可执行（target/sea/bin/dsh），
- * 但 dsh 的两类运行时依赖无法内联，必须外置在可执行文件旁：
+ * tsdown 的 exe 功能把 dsh 入口（node_modules/@deepseek-ai/dsh/lib/bin.js）及其
+ * 静态依赖内联进单文件可执行（target/sea/bin/dsh），但 dsh 的两类运行时依赖
+ * 无法内联，必须外置在可执行文件旁：
  *
  * 1. 资源文件：`../config/*.cordis.yml`（cordis 配置树）与 `../package.json`
  *    （版本号），代码通过 `new URL('../…', import.meta.url)` 从 exe 上一级解析。
- * 2. 插件包：base.cordis.yml 声明的上百个 cordis 插件由 loader 在运行时以
- *    字符串包名 `import()`（vendor/loader/src/config/tree.ts），无法静态内联，
- *    需要可解析的 node_modules（workspace/vendor 包的 lib 产物 + npm 依赖闭包）。
+ * 2. 插件包：cordis 插件由 loader 在运行时以字符串包名 `import()`
+ *    （vendor/loader/src/config/tree.ts），无法静态内联，需要可解析的
+ *    node_modules（@deepseek-ai/dsh 的 npm 依赖闭包实体）。
  *
- * 用法：`zx scripts/sea-materialize.mts`（在 `just sea` 中由 tsdown 打包后执行）。
+ * 来源是 npm 发布的 @deepseek-ai/dsh（nub 安装于仓库根 node_modules）：
+ * config/ 与 package.json 取自该包；插件闭包从其依赖声明出发，按 semver range
+ * 从本仓库 node_modules/.store 匹配版本复制（npm 包实体即发布 files 内容，
+ * 含 lib/dist/assets/bin 与 bundle patch 文件，如 cordis.patch.yml）。
+ *
+ * 用法：`zx scripts/sea-materialize.mts`（在 `just sea` 中先于 tsdown 执行：
+ * tsdown.sea.config.ts 的 alias 依赖本脚本产出的 target/sea/node_modules）。
  */
 import { $, fs, path } from 'zx'
 
 const ROOT = path.join(import.meta.dirname, '..')
-const CLI = path.join(ROOT, 'deepseek-harness/apps/cli')
+// npm 发布的 dsh 主包（nub 安装在仓库根 node_modules，见 package.json）。
+const CLI = path.join(ROOT, 'node_modules/@deepseek-ai/dsh')
+// npm 依赖闭包从本仓库的 .store 实体复制：nub 布局，dsh 的全部运行时依赖
+// 安装在 node_modules/.store（顶层 node_modules 只有项目的直接依赖）。
 const STORE = path.join(ROOT, 'node_modules/.store')
 const SEA = path.join(ROOT, 'target/sea')
 const DST = path.join(SEA, 'node_modules')
@@ -38,35 +48,8 @@ function depRangesOf(pkg: Record<string, any> | null): Map<string, string> {
   return out
 }
 
-/** 复制一个本地包（workspace/vendor）的运行时面：lib + dist + assets + package.json。
- *  bundle 包（package.json 的 dsh.bundle.patch）的 patch 文件（如 cordis.patch.yml）
- *  是 dsh 启动时 loadProfile 必读的运行时文件，一并复制。native 平台包（如
- *  @deepseek-ai/node-addon-landlock-run-linux-x64）的预编译二进制在 bin/ 下，
- *  launcherPath() 运行时从平台包解析 bin/landlock-run，须一并复制。 */
-function copyLocalPkg(name: string, srcDir: string): Record<string, any> | null {
-  const dstDir = path.join(DST, ...name.split('/'))
-  fs.mkdirSync(dstDir, { recursive: true })
-  fs.copyFileSync(path.join(srcDir, 'package.json'), path.join(dstDir, 'package.json'))
-  for (const d of ['lib', 'dist', 'assets', 'bin']) {
-    if (fs.existsSync(path.join(srcDir, d))) {
-      fs.cpSync(path.join(srcDir, d), path.join(dstDir, d), { recursive: true })
-    }
-  }
-  const pkg = pkgJsonOf(srcDir)
-  const bundlePatch = pkg?.dsh?.bundle?.patch
-  if (typeof bundlePatch === 'string' && bundlePatch) {
-    const src = path.join(srcDir, bundlePatch)
-    if (fs.existsSync(src)) {
-      const dst = path.join(dstDir, bundlePatch)
-      fs.mkdirSync(path.dirname(dst), { recursive: true })
-      fs.copyFileSync(src, dst)
-    }
-  }
-  return pkg
-}
-
 // ── 1) 资源文件：config 与 package.json ──────────────────────────────────────
-// 保留 tsdown 刚生成的 exe（target/sea/bin/），只重建外置资源。
+// 不触碰 tsdown 的 exe 产物（target/sea/bin/），只重建外置资源。
 fs.rmSync(DST, { recursive: true, force: true })
 fs.rmSync(path.join(SEA, 'config'), { recursive: true, force: true })
 fs.rmSync(path.join(SEA, 'package.json'), { force: true })
@@ -85,41 +68,17 @@ const done = new Set<string>()
 const seen = new Map<string, string>() // name@version → 已复制的 srcDir
 const queue: { name: string; pkg: Record<string, any> | null }[] = []
 
-// workspace 包（packages/*/*）
-for (const dir of fs.globSync(path.join(ROOT, 'deepseek-harness/packages', '*', '*'))) {
-  const pkg = pkgJsonOf(dir)
-  if (!pkg?.name?.startsWith('@deepseek-ai/')) continue
-  copyLocalPkg(pkg.name, dir)
-  done.add(pkg.name)
-  queue.push({ name: pkg.name, pkg })
-}
-
-// native 子仓库的 workspace 包（native/*/packages/*）：如 landlock-run 的
-// entry JS seam 与 linux-* 平台二进制包，作为 sandbox 的依赖被引用，须随
-// 资源实体化（launcherPath() 运行时从平台包解析 bin/landlock-run）。
-for (const dir of fs.globSync(path.join(ROOT, 'deepseek-harness/native', '*', 'packages', '*'))) {
-  const pkg = pkgJsonOf(dir)
-  if (!pkg?.name) continue
-  copyLocalPkg(pkg.name, dir)
-  done.add(pkg.name)
-  queue.push({ name: pkg.name, pkg })
-}
-
-// vendor 包（cordis、cosmokit、@cordisjs/*、schemastery 等）
-for (const dir of fs.globSync(path.join(ROOT, 'deepseek-harness/vendor', '*'))) {
-  const pkg = pkgJsonOf(dir)
-  if (!pkg?.name) continue
-  copyLocalPkg(pkg.name, dir)
-  done.add(pkg.name)
-  queue.push({ name: pkg.name, pkg })
-}
-
-// dsh-frontend（apps/web，含浏览器端 dist 构建产物）
+// 闭包入口：npm 安装的 @deepseek-ai/dsh 主包（其 dependencies 覆盖全部
+// 运行时插件包；旧版的 workspace/vendor/dsh-frontend 包现均以 npm 依赖
+// 形式存在于闭包内，由 BFS 统一复制）。
 {
-  const name = '@deepseek-ai/dsh-frontend'
-  const pkg = copyLocalPkg(name, path.join(ROOT, 'deepseek-harness/apps/web'))
-  done.add(name)
-  queue.push({ name, pkg })
+  const pkg = pkgJsonOf(CLI)
+  if (!pkg?.name) {
+    console.error(`未找到 npm 包 ${CLI}（先运行 just dep / nub install）`)
+    process.exit(1)
+  }
+  done.add(pkg.name)
+  queue.push({ name: pkg.name, pkg })
 }
 
 /** 把版本字符串解析成数字三元组（忽略 pre-release / build 元数据）。 */
@@ -177,10 +136,13 @@ function satisfies(version: string, range: string): boolean {
   return false
 }
 
-// npm 依赖闭包：从 nub 的 .store 实体复制（版本感知）
+// npm 依赖闭包：从 nub 的 .store 实体复制（版本感知）。
+// BFS 以 seed 队列为根展开依赖闭包；tsx 补充等后续追加的根复用同一复制逻辑。
 let npmCopied = 0
-while (queue.length) {
-  const { name, pkg } = queue.shift()!
+function copyClosure(seed: { name: string; pkg: Record<string, any> | null }[]): void {
+  const q = [...seed]
+  while (q.length) {
+  const { name, pkg } = q.shift()!
   for (const [dep, range] of depRangesOf(pkg)) {
     if (dep.startsWith('node:') || dep.startsWith('@types/')) continue
     if (dep.startsWith('workspace:') || done.has(dep)) continue
@@ -219,7 +181,28 @@ while (queue.length) {
       fs.cpSync(srcDir, dstDir, { recursive: true })
       npmCopied++
     }
-    queue.push({ name: dep, pkg: pkgJsonOf(srcDir) })
+    q.push({ name: dep, pkg: pkgJsonOf(srcDir) })
+  }
+  }
+}
+
+// 闭包展开（dsh 主包为根）。
+copyClosure(queue)
+
+// tsx：SEA 启动时 sea-entry.ts 从 exe 旁的 node_modules 注册 tsx ESM loader
+// （dsh 的源码模式路径需要）。tsx 不是 dsh 的依赖（桌面工具链 devDependency），
+// BFS 不会复制；闭包若缺它则从 .store 显式补上，并复用 copyClosure 复制其
+// 依赖（esbuild 等，tsx loader 运行必需）。
+if (!fs.existsSync(path.join(DST, 'tsx'))) {
+  const tsxDirs = fs.globSync(path.join(STORE, 'tsx@*'))
+    .filter(dir => fs.existsSync(path.join(dir, 'node_modules/tsx')))
+  if (tsxDirs.length) {
+    const tsxDir = path.join(tsxDirs[0], 'node_modules/tsx')
+    fs.cpSync(tsxDir, path.join(DST, 'tsx'), { recursive: true })
+    copyClosure([{ name: 'tsx', pkg: pkgJsonOf(tsxDir) }])
+    console.log('SEA 资源实体化: 补充 tsx（dsh 源码模式 loader）及其依赖')
+  } else {
+    console.warn('[warn] .store 中无 tsx 实体，SEA 的 tsx loader 注册将失败（dsh 编译产物路径不受影响）')
   }
 }
 

@@ -9,6 +9,7 @@
     "zx": "^8.8.5"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh": "0.0.1-rc.1",
     "tsdown": "^0.22.2",
     "tsx": "^4.23.11",
     "typescript": "^7.x"
