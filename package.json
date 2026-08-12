@@ -9,7 +9,7 @@
     "zx": "^8.8.5"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh": "0.0.1-rc.1",
+    "@deepseek-ai/dsh": "^0.0.1-rc.2",
     "tsdown": "^0.22.2",
     "tsx": "^4.23.11",
     "typescript": "^7.x"
@@ -17,8 +17,8 @@
   "devEngines": {
     "packageManager": {
       "name": "nub",
-      "version": "^0.6.0",
-      "onFail": "warn"
+      "version": "^0.7.5",
+      "onFail": "ignore"
     }
   }
 }

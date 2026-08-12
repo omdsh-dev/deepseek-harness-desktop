@@ -22,6 +22,9 @@ default:
 dep:
     nub install
 
+update:
+    nub update --latest
+
 sea:
     nubx tsdown -c tsdown.sea.config.ts
     nubx zx scripts/sea-materialize.mts
