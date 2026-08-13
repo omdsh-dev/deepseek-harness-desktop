@@ -1,4 +1,4 @@
 [tools]
 just = 'latest'
 go = 'latest'
-nub = 'latest'
+nub = '0.7.5-canary.20260812.313'

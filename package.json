@@ -9,10 +9,14 @@
     "zx": "^8.8.5"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh": "^0.0.1-rc.2",
+    "@deepseek-ai/dsh": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-session-persistence": "^0.0.1-rc.5",
     "tsdown": "^0.22.2",
     "tsx": "^4.23.11",
     "typescript": "^7.x"
+  },
+  "resolutions": {
+    "@deepseek-ai/dsh-session-persistence": "^0.0.1-rc.5"
   },
   "devEngines": {
     "packageManager": {
@@ -20,5 +24,13 @@
       "version": "^0.7.5",
       "onFail": "ignore"
     }
+  },
+  "allowBuilds": {
+    "@deepseek-ai/dsh-subprocess-local": true,
+    "@google/genai": true,
+    "esbuild": true,
+    "koffi": true,
+    "node-pty": true,
+    "protobufjs": true
   }
 }

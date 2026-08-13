@@ -26,8 +26,8 @@ update:
     nub update --latest
 
 sea:
-    nubx tsdown -c tsdown.sea.config.ts
     nubx zx scripts/sea-materialize.mts
+    nubx tsdown -c tsdown.sea.config.ts
     @echo "SEA 产物: target/sea/bin/dsh"
 
 # 从 apps/dsh-desktop/assets/icon.svg 生成 app 图标 target/dsh.icns
@@ -99,7 +99,7 @@ clean:
     rm -rf node_modules;
 
 dsh *args:
-    node \
-    --expose-internals \
-    --import tsx/esm \
-    ./node_modules/@deepseek-ai/dsh/lib/bin.js {{ args }}
+    NODE_OPTIONS=--import=tsx/esm nubx dsh {{ args }}
+
+dsh-local *args:
+    DSH_HOME=./.tmp/dsh nubx dsh {{ args }}
