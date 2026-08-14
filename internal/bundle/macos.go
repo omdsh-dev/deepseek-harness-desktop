@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
 )
 
 // assembleMacOS 组装 macOS 应用 target/<name>/<Name>.app：
@@ -16,7 +17,7 @@ import (
 //	Contents/Info.plist
 func assembleMacOS(in Inputs) (string, error) {
 	appRoot := filepath.Join(config.BuildDir(in.Root, in.Cfg), in.Cfg.Name+".app")
-	if err := os.RemoveAll(appRoot); err != nil {
+	if err := fsutil.RemoveAll(appRoot); err != nil {
 		return "", err
 	}
 	contents := filepath.Join(appRoot, "Contents")

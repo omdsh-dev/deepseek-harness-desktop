@@ -2,56 +2,73 @@ package bundle
 
 import (
 	"bytes"
-	_ "embed"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	"image/png"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/tools"
+	"github.com/srwiley/oksvg"
+	"github.com/srwiley/rasterx"
 	xdraw "golang.org/x/image/draw"
 )
 
-//go:embed templates/icon.mjs
-var iconMJS string
+// 图标源格式：工作区提供 SVG（dsh.desktop.icon 引用，推荐）或位图 PNG，
+// 全部尺寸由 Go 的 image 库生成，不依赖任何外部渲染器：
+//   - SVG → oksvg + rasterx（纯 Go SVG 光栅化）渲染为 1024x1024 白底图；
+//   - PNG → image/png 解码；
+//   - 缩放 → golang.org/x/image/draw。
+//
+// macOS icns 用系统 iconutil 打包。
 
-// renderIcon1024 把工作区图标的 SVG 渲染为 1024x1024 PNG（工具链 sharp）。
-// 返回 PNG 文件路径（target/<name>/icon-1024.png）。
-func renderIcon1024(in Inputs) (string, error) {
-	svgPath := filepath.Join(in.Workspace, in.Cfg.Desktop.Icon)
-	if _, err := os.Stat(svgPath); err != nil {
-		return "", fmt.Errorf("icon 源缺失 %s: %w", svgPath, err)
-	}
-	toolsDir, err := tools.Ensure(in.Root)
+// iconSize 是图标基准边长（各平台尺寸都由它缩放而来）。
+const iconSize = 1024
+
+// loadIcon1024 读取工作区图标源并统一为 1024x1024 白底 PNG 字节。
+func loadIcon1024(in Inputs) ([]byte, error) {
+	path := filepath.Join(in.Workspace, in.Cfg.Desktop.Icon)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("icon 源缺失 %s: %w", path, err)
 	}
-	// 渲染脚本模板以 go:embed 内嵌（templates/icon.mjs）。
-	script := filepath.Join(toolsDir, "icon.mjs")
-	if err := os.WriteFile(script, []byte(iconMJS), 0o644); err != nil {
-		return "", err
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".svg":
+		return renderSVG1024(data)
+	default:
+		return resizePNG(data, iconSize)
 	}
-	outDir := config.BuildDir(in.Root, in.Cfg)
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return "", err
-	}
-	out := filepath.Join(outDir, "icon-1024.png")
-	node, err := tools.Node()
+}
+
+// renderSVG1024 用 oksvg/rasterx（纯 Go）把 SVG 渲染为 1024x1024 白底
+// PNG。currentColor 预替换为黑色（oksvg 不解析该 CSS 值）；viewBox 等比
+// contain 居中（图标 viewBox 不一定是正方形）。
+func renderSVG1024(data []byte) ([]byte, error) {
+	svg := strings.ReplaceAll(string(data), `fill="currentColor"`, `fill="#000000"`)
+	icon, err := oksvg.ReadIconStream(bytes.NewReader([]byte(svg)), oksvg.WarnErrorMode)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("解析 SVG: %w", err)
 	}
-	cmd := exec.Command(node, script, svgPath, out)
-	cmd.Dir = toolsDir // 让 import sharp 解析到 tools/node_modules
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("渲染图标: %w", err)
+	vb := icon.ViewBox
+	scale := math.Min(float64(iconSize)/vb.W, float64(iconSize)/vb.H)
+	w, h := vb.W*scale, vb.H*scale
+	icon.SetTarget((float64(iconSize)-w)/2, (float64(iconSize)-h)/2, w, h)
+
+	rgba := image.NewRGBA(image.Rect(0, 0, iconSize, iconSize))
+	draw.Draw(rgba, rgba.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
+	scanner := rasterx.NewScannerGV(iconSize, iconSize, rgba, rgba.Bounds())
+	r := rasterx.NewDasher(iconSize, iconSize, scanner)
+	icon.Draw(r, 1.0)
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, rgba); err != nil {
+		return nil, err
 	}
-	return out, nil
+	return buf.Bytes(), nil
 }
 
 // resizePNG 把 PNG 数据缩放到 size x size。
@@ -69,8 +86,8 @@ func resizePNG(data []byte, size int) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// writePng 写出缩放后的 PNG。
-func writePng(path string, data []byte, size int) error {
+// writeScaledPng 把 1024 PNG 数据缩放到 size 并写出。
+func writeScaledPng(path string, data []byte, size int) error {
 	out, err := resizePNG(data, size)
 	if err != nil {
 		return err
@@ -79,19 +96,15 @@ func writePng(path string, data []byte, size int) error {
 }
 
 // makeIconset 生成 macOS iconset（16–512 @1x/@2x）。
-func makeIconset(srcPNG string, iconset string) error {
+func makeIconset(data []byte, iconset string) error {
 	if err := os.MkdirAll(iconset, 0o755); err != nil {
 		return err
 	}
-	data, err := os.ReadFile(srcPNG)
-	if err != nil {
-		return err
-	}
 	for _, s := range []int{16, 32, 128, 256, 512} {
-		if err := writePng(filepath.Join(iconset, fmt.Sprintf("icon_%dx%d.png", s, s)), data, s); err != nil {
+		if err := writeScaledPng(filepath.Join(iconset, fmt.Sprintf("icon_%dx%d.png", s, s)), data, s); err != nil {
 			return err
 		}
-		if err := writePng(filepath.Join(iconset, fmt.Sprintf("icon_%dx%d@2x.png", s, s)), data, s*2); err != nil {
+		if err := writeScaledPng(filepath.Join(iconset, fmt.Sprintf("icon_%dx%d@2x.png", s, s)), data, s*2); err != nil {
 			return err
 		}
 	}
@@ -109,34 +122,22 @@ func makeIcns(iconset, out string) error {
 	return nil
 }
 
-// makeHicolor 生成 freedesktop hicolor 多尺寸图标集（16–512 + scalable SVG）。
-func makeHicolor(srcPNG, srcSVG, iconsRoot, iconName string) error {
-	data, err := os.ReadFile(srcPNG)
-	if err != nil {
-		return err
-	}
+// makeHicolor 生成 freedesktop hicolor 多尺寸图标集（16–512）。
+func makeHicolor(data []byte, iconsRoot, iconName string) error {
 	for _, s := range []int{16, 22, 24, 32, 48, 64, 128, 256, 512} {
 		dir := filepath.Join(iconsRoot, "hicolor", fmt.Sprintf("%dx%d", s, s), "apps")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
-		if err := writePng(filepath.Join(dir, iconName+".png"), data, s); err != nil {
+		if err := writeScaledPng(filepath.Join(dir, iconName+".png"), data, s); err != nil {
 			return err
 		}
 	}
-	scalable := filepath.Join(iconsRoot, "hicolor", "scalable", "apps")
-	if err := os.MkdirAll(scalable, 0o755); err != nil {
-		return err
-	}
-	return fsutil.CopyFile(srcSVG, filepath.Join(scalable, iconName+".svg"))
+	return nil
 }
 
 // makeIco 组装多尺寸 PNG 内嵌的 ICO（Vista+ 支持 PNG 压缩条目）。
-func makeIco(srcPNG string, out string) error {
-	data, err := os.ReadFile(srcPNG)
-	if err != nil {
-		return err
-	}
+func makeIco(data []byte, out string) error {
 	sizes := []int{16, 24, 32, 48, 64, 128, 256}
 	pngs := make([][]byte, 0, len(sizes))
 	for _, s := range sizes {
@@ -158,7 +159,7 @@ func makeIco(srcPNG string, out string) error {
 		} else {
 			e[0], e[1] = byte(s), byte(s)
 		}
-		e[4], e[5] = 1, 0 // planes
+		e[4], e[5] = 1, 0  // planes
 		e[6], e[7] = 32, 0 // bpp
 		lePut32(e[8:12], uint32(len(pngs[i])))
 		lePut32(e[12:16], uint32(offset))
@@ -188,14 +189,14 @@ func iconFor(in Inputs, destDir string, platform string) (string, error) {
 	if in.Cfg.Desktop.Icon == "" {
 		return "", nil
 	}
-	png1024, err := renderIcon1024(in)
+	icon1024, err := loadIcon1024(in)
 	if err != nil {
 		return "", err
 	}
 	switch platform {
 	case "darwin":
 		iconset := filepath.Join(destDir, "dsh.iconset")
-		if err := makeIconset(png1024, iconset); err != nil {
+		if err := makeIconset(icon1024, iconset); err != nil {
 			return "", err
 		}
 		out := filepath.Join(destDir, "dsh.icns")
@@ -205,13 +206,13 @@ func iconFor(in Inputs, destDir string, platform string) (string, error) {
 		return out, nil
 	case "linux":
 		out := filepath.Join(destDir, "icons")
-		if err := makeHicolor(png1024, filepath.Join(in.Workspace, in.Cfg.Desktop.Icon), out, "dsh"); err != nil {
+		if err := makeHicolor(icon1024, out, "dsh"); err != nil {
 			return "", err
 		}
 		return out, nil
 	case "windows":
 		out := filepath.Join(destDir, "dsh.ico")
-		if err := makeIco(png1024, out); err != nil {
+		if err := makeIco(icon1024, out); err != nil {
 			return "", err
 		}
 		return out, nil

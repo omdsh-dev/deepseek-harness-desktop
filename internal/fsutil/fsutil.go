@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // CopyFile 复制单个文件并保留可执行位。
@@ -124,4 +125,18 @@ func copyDeref(src, dst string) error {
 		return CopyDirDeref(src, dst, nil)
 	}
 	return CopyFile(src, dst)
+}
+
+// RemoveAll 递归删除目录，带重试：macOS APFS 上删除大目录偶发
+// ENOTEMPTY（目录项删除的瞬态竞争），重试可自愈。
+func RemoveAll(path string) error {
+	var err error
+	for i := 0; i < 5; i++ {
+		err = os.RemoveAll(path)
+		if err == nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return err
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
 )
 
 // assembleWindows 组装 Windows 应用 target/<name>/windows/<Name>/：
@@ -20,7 +21,7 @@ import (
 func assembleWindows(in Inputs) (string, error) {
 	root := filepath.Join(config.BuildDir(in.Root, in.Cfg), "windows")
 	appRoot := filepath.Join(root, in.Cfg.Name)
-	if err := os.RemoveAll(root); err != nil {
+	if err := fsutil.RemoveAll(root); err != nil {
 		return "", err
 	}
 	if _, err := assembleLayout(in, appRoot); err != nil {

@@ -173,7 +173,7 @@ func Assemble(in Inputs) (string, error) {
 // AssembleDev 组装开发布局（target/<name>/dev），返回 bin 目录。
 func AssembleDev(in Inputs) (string, error) {
 	appRoot := DevDir(in.Root, in.Cfg)
-	if err := os.RemoveAll(appRoot); err != nil {
+	if err := fsutil.RemoveAll(appRoot); err != nil {
 		return "", err
 	}
 	return assembleLayout(in, appRoot)

@@ -61,7 +61,7 @@ func Build(root, ws string, cfg *config.Config, skipInstall bool) (string, error
 	}
 
 	staging := config.SeaDir(root, cfg)
-	if err := os.RemoveAll(staging); err != nil {
+	if err := fsutil.RemoveAll(staging); err != nil {
 		return "", fmt.Errorf("clean staging: %w", err)
 	}
 	if err := os.MkdirAll(staging, 0o755); err != nil {

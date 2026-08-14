@@ -11,10 +11,6 @@ bundle *args:
 dev *args:
     go tool deepseek-harness-desktop dev {{ args }}
 
-# 列出 examples 工作区。
-ls:
-    go tool deepseek-harness-desktop ls
-
 test:
     go test ./...
 

@@ -1,8 +1,9 @@
 // Package tools 管理构建工具链（target/tools/）。
 //
-// 根仓库是纯 Go，不提交任何 npm 清单；构建工具（tsdown 打包 SEA、sharp
-// 渲染图标）按需安装到 target/tools（nub install，构建目录本地 store），
-// 与工作区解耦。target/ 统一承载全部产物，无其他临时目录。
+// 根仓库是纯 Go，不提交任何 npm 清单；构建工具（tsdown 打包 SEA）按需
+// 安装到 target/tools（pnpm install，构建目录本地 store），与工作区解耦。
+// target/ 统一承载全部产物，无其他临时目录。图标渲染不依赖工具链：由
+// internal/bundle 用 Go 的 image 库直接处理图标源。
 //
 // 工具链的工程文件模板（package.json / .npmrc / pnpm-workspace.yaml）以
 // go:embed 内嵌在 templates/ 下。
@@ -14,6 +15,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/pm"
 )
 
 //go:embed all:templates
@@ -54,12 +57,15 @@ func Ensure(root string) (string, error) {
 			return "", fmt.Errorf("write %s: %w", e.Name(), err)
 		}
 	}
-	cmd := exec.Command("nub", "install")
+	cmd, err := pm.Command("install")
+	if err != nil {
+		return "", err
+	}
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("nub install（%s）: %w", dir, err)
+		return "", fmt.Errorf("pnpm install（%s）: %w", dir, err)
 	}
 	return dir, nil
 }
@@ -78,13 +84,4 @@ func Run(root, dir, bin string, args ...string) error {
 		return fmt.Errorf("%s: %w", bin, err)
 	}
 	return nil
-}
-
-// Node 返回 PATH 中的 node（mise 提供），供运行工具链里的 .mjs 脚本。
-func Node() (string, error) {
-	path, err := exec.LookPath("node")
-	if err != nil {
-		return "", fmt.Errorf("node 不在 PATH（mise 提供）: %w", err)
-	}
-	return path, nil
 }

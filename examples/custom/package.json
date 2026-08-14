@@ -3,8 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.0-rc.6",
     "@morlay/session-persistence-rdb": "^0.0.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6"
   },
   "dsh": {
     "profile": {

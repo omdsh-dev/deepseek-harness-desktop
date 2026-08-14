@@ -2,15 +2,14 @@
 // 下的拍平 desktop 定义：package.json + cordis.patch.yml + dsh.desktop.
 // yaml）打包为独立自定义桌面。
 //
-// 用法（仓库根执行，或 go install 后任意目录）：
+// 用法（go install 后任意目录，或仓库内 go tool）：
 //
 //	deepseek-harness-desktop dev <workspace>                 开发模式：构建并直接运行
 //	deepseek-harness-desktop bundle --platform=os/arch <ws>  打包平台应用（默认本机平台）
-//	deepseek-harness-desktop ls                              列出 examples 工作区
 //
 // 选项：
 //
-//	--skip-install   跳过 nub install（使用已有安装）
+//	--skip-install   跳过依赖安装（使用已有安装）
 //
 // 全部产物在仓库根 target/ 下（target/tools 工具链、target/<name>/ 各
 // desktop 的 profile 安装 / SEA / 应用包）。
@@ -21,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/bundle"
@@ -31,13 +29,12 @@ import (
 
 const usage = `deepseek-harness-desktop — 把 dsh 的 --profile web 与 cordis.patch.yml 打包为独立自定义桌面。
 
-用法（仓库根执行）：
+用法（go install 后任意目录，或仓库内 go tool）：
   deepseek-harness-desktop dev <workspace>                  开发模式：构建并直接运行
   deepseek-harness-desktop bundle --platform=os/arch <ws>   打包平台应用（默认本机平台）
-  deepseek-harness-desktop ls                               列出 examples 工作区
 
 选项：
-  --skip-install   跳过 nub install（使用已有安装）
+  --skip-install   跳过依赖安装（使用已有安装）
 
 工作区是拍平的 desktop 定义（见 examples/official、examples/custom）：
   package.json       全部配置：name/version/dependencies（npm 语义）、
@@ -83,8 +80,6 @@ func Run(args []string) int {
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return 0
-	case "ls", "list":
-		return runList(rest[1:])
 	case "dev":
 		if len(rest) < 2 {
 			fmt.Fprintln(os.Stderr, "用法：deepseek-harness-desktop dev <workspace>")
@@ -109,31 +104,6 @@ func Run(args []string) int {
 		fmt.Fprintf(os.Stderr, "未知命令 %q\n\n%s", rest[0], usage)
 		return 2
 	}
-}
-
-// runList 列出 examples/ 下的工作区目录。
-func runList(args []string) int {
-	root, err := repoRoot()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		return 1
-	}
-	entries, err := os.ReadDir(filepath.Join(root, "examples"))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "读取 examples/: %v\n", err)
-		return 1
-	}
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		fmt.Println(n)
-	}
-	return 0
 }
 
 // checkPlatform 校验 bundle 目标平台（SEA 与 Wails 壳均不支持交叉编译）。
@@ -235,10 +205,17 @@ func Dev(ws string, skipInstall bool) error {
 }
 
 // loadWorkspace 解析工作区并返回（仓库根, 绝对工作区路径, 配置）。
+// `examples/<name>` 形式始终解析到仓库根的 examples/ 目录；其余路径按
+// 当前目录解析。
 func loadWorkspace(ws string) (string, string, *config.Config, error) {
 	root, err := repoRoot()
 	if err != nil {
 		return "", "", nil, err
+	}
+	if !filepath.IsAbs(ws) {
+		if ws == "examples" || strings.HasPrefix(ws, "examples"+string(filepath.Separator)) {
+			ws = filepath.Join(root, ws)
+		}
 	}
 	ws, err = filepath.Abs(ws)
 	if err != nil {

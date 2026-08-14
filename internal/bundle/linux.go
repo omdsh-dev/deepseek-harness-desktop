@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
 )
 
 // assembleLinux 组装 Linux 应用 target/<name>/linux/<Name>/：
@@ -21,7 +22,7 @@ import (
 func assembleLinux(in Inputs) (string, error) {
 	root := filepath.Join(config.BuildDir(in.Root, in.Cfg), "linux")
 	appRoot := filepath.Join(root, in.Cfg.Name)
-	if err := os.RemoveAll(root); err != nil {
+	if err := fsutil.RemoveAll(root); err != nil {
 		return "", err
 	}
 	if _, err := assembleLayout(in, appRoot); err != nil {
