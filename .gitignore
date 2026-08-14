@@ -5,4 +5,5 @@ dist/
 target/
 
 mise.*.toml
+pnpm-lock.yaml
 nub.lock

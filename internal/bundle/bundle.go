@@ -91,8 +91,9 @@ func BinNames() (shell, server string) {
 }
 
 // assembleLayout 装配平台无关的公共布局（bin/ + 资源 + 种子），返回 bin
-// 目录。appRoot 由调用方先清理。
-func assembleLayout(in Inputs, appRoot string) (string, error) {
+// 目录。appRoot 由调用方先清理。withSeed=false 时不复制 DSH_HOME 种子
+// （dev 布局：运行时 home 由 CLI 单独构造）。
+func assembleLayout(in Inputs, appRoot string, withSeed bool) (string, error) {
 	binDir := filepath.Join(appRoot, "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return "", err
@@ -127,11 +128,17 @@ func assembleLayout(in Inputs, appRoot string) (string, error) {
 		}
 	}
 
-	// DSH_HOME 种子：构建出的 dsh-home → appRoot/dsh-home（解引用，
-	// profile 安装的 node_modules 是 store 链接）。
-	homeSrc := config.DSHHomeDir(in.Root, in.Cfg)
-	if err := fsutil.CopyDirDeref(homeSrc, filepath.Join(appRoot, "dsh-home"), seedSkip); err != nil {
-		return "", fmt.Errorf("copy dsh-home seed: %w", err)
+	// DSH_HOME 种子：工作区（profile 拍平内容）→ appRoot/dsh-home/profiles/web
+	// （解引用：pnpm 安装的 node_modules 是 store 链接）。dsh 运行时固定从
+	// $DSH_HOME/profiles/<name> 解析 profile。
+	if withSeed {
+		homeRoot := filepath.Join(appRoot, "dsh-home")
+		if err := os.MkdirAll(filepath.Join(homeRoot, "profiles"), 0o755); err != nil {
+			return "", err
+		}
+		if err := fsutil.CopyDirDeref(in.Workspace, filepath.Join(homeRoot, "profiles", config.ProfileName), seedSkip); err != nil {
+			return "", fmt.Errorf("copy dsh-home seed: %w", err)
+		}
 	}
 
 	return binDir, nil
@@ -171,10 +178,12 @@ func Assemble(in Inputs) (string, error) {
 }
 
 // AssembleDev 组装开发布局（target/<name>/dev），返回 bin 目录。
+// dev 不复制 DSH_HOME 种子：运行时 home 由 CLI 构造（profiles/web 指向
+// 工作区），用户在工作区的 pnpm install 结果直接可见。
 func AssembleDev(in Inputs) (string, error) {
 	appRoot := DevDir(in.Root, in.Cfg)
 	if err := fsutil.RemoveAll(appRoot); err != nil {
 		return "", err
 	}
-	return assembleLayout(in, appRoot)
+	return assembleLayout(in, appRoot, false)
 }

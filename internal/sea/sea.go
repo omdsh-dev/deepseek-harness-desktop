@@ -52,7 +52,7 @@ func SeaExe(root string, cfg *config.Config) string {
 
 // Build 执行一次完整的 SEA 打包，返回 SEA 可执行文件路径。
 func Build(root, ws string, cfg *config.Config, skipInstall bool) (string, error) {
-	profileDir, err := profile.Ensure(root, ws, cfg, skipInstall)
+	profileDir, err := profile.Ensure(ws, skipInstall)
 	if err != nil {
 		return "", err
 	}

@@ -43,8 +43,24 @@ examples/custom/
                       - dsh.profile.bundles：cordis bundle 列表
                       - dsh.desktop：桌面特有（id/window/icon/dshHome）
   cordis.patch.yml    profile patch 层（dsh 应用在 bundle 层之后）
+  pnpm-workspace.yaml 安装工程文件（nodeLinker hoisted + allowBuilds）
+  .npmrc              registry 映射（@morlay → GitHub npm）与本地 store
   icon.svg            应用图标（可选，dsh.desktop.icon 引用）
 ```
+
+### 先验证，再打包
+
+工作区本身就是可安装、可验证的单元，用官方 dsh 流程：
+
+```sh
+cd examples/custom
+pnpm install                                    # 依赖闭包落在工作区 node_modules
+./node_modules/.bin/dsh plugin --profile web add @morlay/session-persistence-rdb  # 官方装 bundle
+DSH_HOME=$XDG_DATA_HOME/dsh ./node_modules/.bin/dsh web --patch ./cordis.patch.yml  # 官方跑 web + 工作区 patch
+```
+
+patch 与插件组合确认可用后，`bundle` 只是把它包装为桌面应用（复用工作区已
+安装的闭包，不再重复安装）。
 
 示例（[examples/official](examples/official)）：
 
@@ -83,7 +99,8 @@ dsh 的 cordis 配置是分层 patch 合成：`dsh.profile.bundles` 按序叠加
 bundle 包自带的 patch 层，最后叠加 `cordis.patch.yml`（用户层）。CLI 只
 负责安装、打包与分发，不修改任何 patch 语义。`settings.yaml`、`storages/`、
 `sessions/` 等用户运行时数据不属于工作区，首次启动后由应用在目标 DSH_HOME
-中生成。
+中生成。打包时工作区被装配为应用的 DSH_HOME 种子（dsh 固定从
+`$DSH_HOME/profiles/web` 解析 profile）。
 
 ## 产物与架构
 

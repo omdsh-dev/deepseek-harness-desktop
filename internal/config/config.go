@@ -1,14 +1,18 @@
-// Package config 解析工作区配置（全部来自 package.json，无独立配置文件）：
+// Package config 解析工作区配置。
 //
-//	name / version / dependencies      npm 语义字段，直接复用；
-//	dsh.profile.bundles                打包的 cordis bundle 列表；
-//	dsh.desktop                        桌面特有配置（id、窗口几何、图标、
-//	                                   DSH_HOME 策略）。
+// 工作区（examples/ 下的目录）是**拍平**的 desktop 定义：desktop 只有
+// 一个 profile（web），profile 内容直接放在工作区根（无目录嵌套、无独立
+// 配置文件）：
 //
-// 工作区（examples/ 下的目录）是一个拍平的 desktop 定义：package.json +
-// cordis.patch.yml（profile patch 层）+ settings.yaml（DSH_HOME 层设置，
-// 可选）+ 图标。CLI 构建时把它们装配为 DSH_HOME 布局（profiles/web/）并
-// 打包。
+//	package.json         name/version/dependencies（npm 语义，直接复用）
+//	                     + dsh.profile.bundles（cordis bundle 列表）
+//	                     + dsh.desktop（桌面特有：id/window/icon/dshHome）
+//	cordis.patch.yml     profile patch 层（dsh 应用在 bundle 层之后）
+//	pnpm-workspace.yaml  安装工程文件（nodeLinker hoisted + allowBuilds）
+//	.npmrc               registry 映射（@morlay → GitHub npm）与本地 store
+//
+// 工作区可直接 pnpm install（依赖闭包落在工作区 node_modules）；运行时由
+// CLI 装配为 dsh 的 DSH_HOME 布局（profiles/web ← 工作区）。
 package config
 
 import (
@@ -18,7 +22,7 @@ import (
 	"path/filepath"
 )
 
-// ProfileName 是 desktop 唯一支持的 dsh profile 名（拍平布局）。
+// ProfileName 是 desktop 唯一支持的 dsh profile 名。
 const ProfileName = "web"
 
 // Window 是桌面窗口的几何配置。
@@ -32,7 +36,7 @@ type Window struct {
 // Desktop 是 desktop 特有配置（package.json 的 dsh.desktop 字段）。
 type Desktop struct {
 	ID string `json:"id"`
-	// Icon 是相对工作区的图标源文件（SVG），缺省不生成图标。
+	// Icon 是相对工作区的图标源文件（SVG 或 PNG），缺省不生成图标。
 	Icon string `json:"icon"`
 	// DSHHome 是运行时 DSH_HOME 策略：
 	//   缺省            — xdg.DataHome/<name>（XDG_DATA_HOME 规范）；
@@ -56,7 +60,7 @@ type Config struct {
 	Desktop Desktop
 }
 
-// manifest 是工作区 package.json 的最小结构。
+// manifest 是 profile package.json 的最小结构。
 type manifest struct {
 	Name         string            `json:"name"`
 	Version      string            `json:"version"`
@@ -129,14 +133,15 @@ func BuildDir(root string, cfg *Config) string {
 	return filepath.Join(TargetDir(root), cfg.Name)
 }
 
-// DSHHomeDir 返回构建出的 DSH_HOME 目录（target/<name>/dsh-home）。
-func DSHHomeDir(root string, cfg *Config) string {
-	return filepath.Join(BuildDir(root, cfg), "dsh-home")
-}
-
 // SeaDir 返回 SEA 打包暂存目录（target/<name>/sea）。
 func SeaDir(root string, cfg *Config) string {
 	return filepath.Join(BuildDir(root, cfg), "sea")
+}
+
+// DSHHomeDir 返回构建出的运行时 DSH_HOME（target/<name>/dsh-home）：
+// dev 模式在此构造 profiles/web（指向工作区），bundle 种子由此复制。
+func DSHHomeDir(root string, cfg *Config) string {
+	return filepath.Join(BuildDir(root, cfg), "dsh-home")
 }
 
 func sanitizeID(s string) string {

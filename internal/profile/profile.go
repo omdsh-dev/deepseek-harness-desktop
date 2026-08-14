@@ -1,19 +1,12 @@
-// Package profile 把工作区的拍平 desktop 定义装配为 DSH_HOME 布局并安装
-// 依赖闭包。
+// Package profile 管理工作区的依赖闭包（工作区根即 profile 内容）。
 //
-// 装配目标（构建目录，全部产物在 target/ 下）：
+// 工作区根拍平存放 package.json（bundles + deps）、cordis.patch.yml
+// （patch 层）、pnpm-workspace.yaml 与 .npmrc（安装工程文件，随工作区
+// 提交）。用户可直接在工作区 pnpm install，依赖闭包落在工作区
+// node_modules；CLI 复用这份安装（SEA 闭包 / bundle 种子）。
 //
-//	target/<name>/dsh-home/            = 构建出的 DSH_HOME（= bundle 种子）
-//	  profiles/web/package.json        ← 工作区 package.json（bundles + deps）
-//	  profiles/web/cordis.patch.yml    ← 工作区 cordis.patch.yml（patch 层）
-//	  profiles/web/.npmrc                registry 映射 + 本地 store
-//	  profiles/web/pnpm-workspace.yaml   nodeLinker: hoisted + autoInstallPeers
-//	  profiles/web/.npmrc                registry + 工作区本地 store
-//	  profiles/web/node_modules/         nub install 安装的依赖闭包
-//
-// dsh 的 boot 固定从 $DSH_HOME/profiles/<name>/ 读 profile（loadProfile），
-// 故拍平的工作区内容在此装配回 profiles/web/ 布局；desktop 只有一个
-// profile（web），无需泛化多 profile。
+// CLI 兜底：工程文件缺失时从内嵌模板生成（与官方推荐配置一致），保证
+// 闭包为扁平布局（SEA 打包直接复制）且原生模块构建脚本被放行。
 package profile
 
 import (
@@ -23,84 +16,60 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/pm"
 )
 
 //go:embed all:templates
 var templates embed.FS
 
-// 工程文件模板（.npmrc / pnpm-workspace.yaml）以 go:embed 内嵌在
-// templates/ 下。安装器与 dsh 官方一致使用 pnpm：.npmrc 含 registry
-// 映射（@deepseek-ai 官方 npm + @morlay GitHub npm）与构建目录本地
-// store；pnpm-workspace.yaml 的 autoInstallPeers=true 保证 dsh 核心 peer
-// 依赖（cordis-plugin-group 等）进闭包（缺它们时 SEA 打包会把裸包名
-// import 留在 blob 里，启动即崩）。
-
-// ProfileDir 返回构建出的 profile 目录（target/<name>/dsh-home/profiles/web）。
-func ProfileDir(root string, cfg *config.Config) string {
-	return filepath.Join(config.DSHHomeDir(root, cfg), "profiles", config.ProfileName)
-}
-
-// Installed 报告 profile 是否已安装（node_modules 中存在 dsh 主包）。
-func Installed(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, "node_modules", "@deepseek-ai", "dsh", "package.json"))
+// Installed 报告闭包是否已安装（工作区 node_modules 中存在 dsh 主包）。
+func Installed(ws string) bool {
+	_, err := os.Stat(filepath.Join(ws, "node_modules", "@deepseek-ai", "dsh", "package.json"))
 	return err == nil
 }
 
-// Assemble 把工作区的拍平定义装配为 DSH_HOME 布局（幂等）：package.json
-// 与 profile patch 层原样复制，工程文件（.npmrc / pnpm-workspace.yaml）
-// 由模板生成。settings.yaml 等用户运行时数据不属于工作区，由用户在应用
-// 内配置生成。
-func Assemble(root, ws string, cfg *config.Config) error {
-	profileDir := ProfileDir(root, cfg)
-	if err := os.MkdirAll(profileDir, 0o755); err != nil {
-		return fmt.Errorf("mkdir %s: %w", profileDir, err)
+// Ensure 确保工程文件齐全（缺失则从模板兜底生成），未安装时在工作区
+// 运行 pnpm install。返回工作区路径。
+func Ensure(ws string, skipInstall bool) (string, error) {
+	dir := ws
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("mkdir %s: %w", dir, err)
 	}
-
-	// profile 清单：工作区 package.json 原样复制（构建脚本白名单在
-	// pnpm-workspace.yaml 模板中配置）。
-	manifestPath := filepath.Join(ws, "package.json")
-	raw, err := os.ReadFile(manifestPath)
-	if err != nil {
-		return fmt.Errorf("read %s: %w", manifestPath, err)
-	}
-	if err := os.WriteFile(filepath.Join(profileDir, "package.json"), raw, 0o644); err != nil {
-		return fmt.Errorf("write package.json: %w", err)
-	}
-
-	// 工程文件（templates/ 内嵌）。
+	// 工程文件兜底：工作区通常已提交；缺失时从模板生成。
 	entries, err := templates.ReadDir("templates")
 	if err != nil {
-		return fmt.Errorf("read embedded templates: %w", err)
+		return "", fmt.Errorf("read embedded templates: %w", err)
 	}
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
+		target := filepath.Join(dir, e.Name())
+		if _, err := os.Stat(target); err == nil {
+			continue
+		}
 		data, err := templates.ReadFile("templates/" + e.Name())
 		if err != nil {
-			return err
+			return "", err
 		}
-		if err := os.WriteFile(filepath.Join(profileDir, e.Name()), data, 0o644); err != nil {
-			return fmt.Errorf("write %s: %w", e.Name(), err)
-		}
-	}
-	if err := fsutil.CopyFile(filepath.Join(ws, "cordis.patch.yml"), filepath.Join(profileDir, "cordis.patch.yml")); err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("copy cordis.patch.yml: %w", err)
-		}
-		// 工作区未提供 patch 层：写入 dsh 官方空模板。
-		if err := os.WriteFile(filepath.Join(profileDir, "cordis.patch.yml"), []byte("[]\n"), 0o644); err != nil {
-			return err
+		if err := os.WriteFile(target, data, 0o644); err != nil {
+			return "", fmt.Errorf("write %s: %w", e.Name(), err)
 		}
 	}
-	return nil
+
+	if !Installed(ws) && !skipInstall {
+		if err := Install(dir, false); err != nil {
+			return "", err
+		}
+	}
+	if !Installed(ws) {
+		return "", fmt.Errorf("闭包未安装（%s/node_modules/@deepseek-ai/dsh 缺失）；先在工作区执行 pnpm install 或 bundle", dir)
+	}
+	return dir, nil
 }
 
 // Install 在 profile 目录运行 pnpm install（与 dsh 官方一致；增量，
-// 已有安装时快速收敛）。pnpm 从 PATH 解析（mise 管理）。
+// 已有安装时快速收敛）。
 func Install(dir string, skip bool) error {
 	if skip {
 		return nil
@@ -116,23 +85,6 @@ func Install(dir string, skip bool) error {
 		return fmt.Errorf("pnpm install（%s）: %w", dir, err)
 	}
 	return nil
-}
-
-// Ensure 确保构建出的 profile 已装配并安装，返回 profile 目录。
-func Ensure(root, ws string, cfg *config.Config, skipInstall bool) (string, error) {
-	if err := Assemble(root, ws, cfg); err != nil {
-		return "", err
-	}
-	dir := ProfileDir(root, cfg)
-	if !Installed(dir) && !skipInstall {
-		if err := Install(dir, false); err != nil {
-			return "", err
-		}
-	}
-	if !Installed(dir) {
-		return "", fmt.Errorf("profile 未安装（%s/node_modules/@deepseek-ai/dsh 缺失）；先执行 bundle", dir)
-	}
-	return dir, nil
 }
 
 // DshPkgDir 返回已安装的 @deepseek-ai/dsh 主包目录。

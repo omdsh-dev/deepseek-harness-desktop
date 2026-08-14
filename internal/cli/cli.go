@@ -195,13 +195,25 @@ func Dev(ws string, skipInstall bool) error {
 		return err
 	}
 
-	// 4) 启动：DSH_HOME 指向构建出的 dsh-home（开发模式直接用构建产物，
-	//    不走 XDG 拷贝）。
+	// 4) 构造运行时 DSH_HOME（target/<name>/dsh-home）：dsh 固定从
+	//    $DSH_HOME/profiles/web 解析 profile，profiles/web 用符号链接指向
+	//    工作区——用户在工作区的 pnpm install 结果直接可见，无需复制。
+	homeDir := config.DSHHomeDir(root, cfg)
+	if err := os.MkdirAll(filepath.Join(homeDir, "profiles"), 0o755); err != nil {
+		return err
+	}
+	profileLink := filepath.Join(homeDir, "profiles", config.ProfileName)
+	if _, err := os.Lstat(profileLink); os.IsNotExist(err) {
+		if err := os.Symlink(ws, profileLink); err != nil {
+			return fmt.Errorf("构造 profiles/web 链接: %w", err)
+		}
+	}
+
+	// 5) 启动。
 	shellName, _ := bundle.BinNames()
 	shell := filepath.Join(binDir, shellName)
-	dshHome := config.DSHHomeDir(root, cfg)
-	fmt.Printf("==> 启动 %s（DSH_HOME=%s）\n", shell, dshHome)
-	return runDetachedEnv(shell, []string{"DSH_APP_DSH_HOME=" + dshHome})
+	fmt.Printf("==> 启动 %s（DSH_HOME=%s）\n", shell, homeDir)
+	return runDetachedEnv(shell, []string{"DSH_APP_DSH_HOME=" + homeDir})
 }
 
 // loadWorkspace 解析工作区并返回（仓库根, 绝对工作区路径, 配置）。

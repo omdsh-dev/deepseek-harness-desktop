@@ -25,7 +25,7 @@ func assembleLinux(in Inputs) (string, error) {
 	if err := fsutil.RemoveAll(root); err != nil {
 		return "", err
 	}
-	if _, err := assembleLayout(in, appRoot); err != nil {
+	if _, err := assembleLayout(in, appRoot, true); err != nil {
 		return "", err
 	}
 
