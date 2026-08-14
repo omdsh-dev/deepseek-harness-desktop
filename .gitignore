@@ -1,13 +1,8 @@
-node_modules/
 .tmp/
+node_modules/
 build/
 dist/
 target/
 
 mise.*.toml
-
-deepseek-harness/
-deepseek-harness-*/
-
-
 nub.lock

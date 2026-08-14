@@ -5,6 +5,7 @@
 - 技术栈见 [mise.toml](./mise.toml)
 - 可用命令见 [justfile](./justfile)
 
-这是 deepseek harness desktop 的仓库，上游源代码在 deepseek-harness 下，我们将为 deepseek-harness 打包为 desktop app
-
-- 严禁修改 deepseek-harness 下的文件（已加 gitignore）
+这是 deepseek harness desktop 的仓库：以纯 Go 单命令
+（cmd/deepseek-harness-desktop）把 @deepseek-ai/dsh 的 --profile web 与
+cordis.patch.yml 打包为独立自定义桌面。工作区（examples/）只提供拍平的
+desktop 定义（package.json + cordis.patch.yml），全部构建产物在 target/。

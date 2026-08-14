@@ -1,100 +1,157 @@
 # deepseek-harness-desktop
 
-为 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 打包桌面应用：
-上游以 npm 包 [@deepseek-ai/dsh](https://www.npmjs.com/package/@deepseek-ai/dsh)
-（版本见 [package.json](./package.json)）提供，本仓库直接安装并打包为 Wails v3 壳
-（`dsh-shell`）+ SEA 单文件后端（`dsh-server`，内嵌 node 的 `dsh web`），
-Web 界面内嵌在 Webview 窗口里，不依赖外部浏览器。支持 macOS、Linux 与 Windows。
+把 [@deepseek-ai/dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) 的
+`--profile web` 与 `cordis.patch.yml` 打包为**独立自定义桌面**的单命令仓库。
+仓库根是纯 Go：唯一的命令 `deepseek-harness-desktop` 接收一个工作区
+（examples/ 下的拍平 desktop 定义），完成 profile 依赖安装、SEA 后端
+打包、Wails 壳构建与平台组装。全部产物在仓库根 `target/` 下。支持
+macOS、Linux 与 Windows。
 
-## 架构：为什么是三层
+## 快速开始
+
+依赖（[mise](https://mise.jdx.dev) 管理）：`go`、`nub`，见 [mise.toml](./mise.toml)。
+dsh 本体通过 npm 安装到构建目录（`nub install`），根仓库不持有任何 npm
+清单。
+
+```sh
+go run ./cmd/deepseek-harness-desktop bundle examples/official     # 打包官方 web profile
+go run ./cmd/deepseek-harness-desktop bundle examples/custom       # 打包自定义工作区
+go run ./cmd/deepseek-harness-desktop dev examples/official        # 开发模式：构建并直接运行
+go run ./cmd/deepseek-harness-desktop ls                           # 列出 examples 工作区
+```
+
+也可以 `go install github.com/dsh-external/deepseek-harness-desktop/cmd/deepseek-harness-desktop@latest`
+后直接使用命令名（仓库根定位见「环境变量」）。
+
+macOS 产物：`target/<name>/<Name>.app`；Linux：`target/<name>/linux/<Name>/`
+（含 `tar.gz`）；Windows：`target/<name>/windows/<Name>/`（含 `zip`）。
+`bundle` 只支持本机平台（SEA 与 Wails 壳均不支持交叉编译），
+`--platform=os/arch` 用于显式声明并校验。
+
+## 架构
 
 桌面应用由三层组成，每一层都是 dsh 运行机制的必然结果：
 
 | 层 | 产物 | 职责 | 为什么需要 |
 |---|---|---|---|
 | 壳 | `dsh-shell`（Wails v3，Go） | 原生窗口 + WebView；后端进程守护（启动/就绪/退避重启/退出清理） | node 进程不提供原生桌面窗口，壳是应用的唯一入口 |
-| 后端 | `dsh-server`（SEA，内嵌 node v26.5.0 的 `dsh web`） | 跑 dsh 的 cordis 插件树，HTTP 伺服前端与 API | dsh 是 node/TypeScript 的 cordis 插件化 harness，插件在运行时按字符串包名 `import()`、依赖 npm 闭包——只能在 node 上运行，Go 无法替代 |
-| 前端 | `dsh-frontend`（apps/web 的 vite dist） | 浏览器 UI，由 `dsh web` 经 HTTP 伺服，WebView 加载 | UI 是浏览器应用，且 `dsh web` 经 HTTP 注入 `__DSH_BOOT__` 引导，无法脱离后端直接打开 |
+| 后端 | `dsh-server`（SEA，内嵌 node 的 `dsh --profile web`） | 跑 dsh 的 cordis 插件树，HTTP 伺服前端与 API | dsh 是 node/TypeScript 的 cordis 插件化 harness，只能在 node 上运行，Go 无法替代 |
+| 前端 | dsh 内置 web 前端（`@deepseek-ai/dsh-web-app`） | 浏览器 UI，由后端经 HTTP 伺服，WebView 加载 | UI 是浏览器应用，且后端经 HTTP 注入 `__DSH_BOOT__` 引导，无法脱离后端直接打开 |
 
 三个关键点：
 
-- **必须依赖 node**：dsh 的 cordis 插件树（TS/ESM/npm 生态）只能在 node 运行时上跑，桌面 app 不能假设用户系统装了 node，因此用 SEA（Node Single Executable Application，`--build-sea`）把 node 内嵌进单文件可执行（v26.5.0）。
-- **必须走 HTTP**：`dsh web` 以 HTTP 伺服前端与 API（`httpServer` 服务、`__DSH_BOOT__` 注入），壳的 WebView 加载 `http://127.0.0.1:<port>`，端口由 OS 分配避免冲突。
-- **壳必须存在**：node 后端不提供原生窗口；壳承担窗口生命周期、后端守护，并在退出时终止后端进程组，不留孤儿 node。
+- **必须依赖 node 运行时**：cordis 插件树（TS/ESM/npm 生态）只能在 node 上
+  跑，桌面 app 不假设用户装了 node，因此用 SEA（Node Single Executable
+  Application）把 node 内嵌进单文件可执行。构建期 node 由 mise 提供。
+- **必须走 HTTP**：`dsh --profile web` 以 HTTP 伺服前端与 API
+  （`__DSH_BOOT__` 注入），壳的 WebView 加载 `http://127.0.0.1:<port>`，
+  端口由 OS 分配避免冲突。
+- **壳必须存在**：node 后端不提供原生窗口；壳承担窗口生命周期、后端守护，
+  并在退出时终止后端进程组，不留孤儿 node。
 
-## 快速开始
+## 工作区（examples/）
 
-依赖（[mise](https://mise.jdx.dev) 管理）：`just`、`go`、`nub`，见 [mise.toml](./mise.toml)。
-上游 dsh 通过 npm 安装（`@deepseek-ai/dsh@0.0.1-rc.1` 在 package.json devDependencies，
-`just sea` 内的 `just dep` 即 `nub install`），不需要克隆上游源码。
+工作区是一个**拍平的 desktop 定义**（无独立配置文件、无目录嵌套），
+desktop 有且只有一个 profile（web）：
 
-macOS：
-
-```sh
-just sea                 # 构建 SEA 单文件可执行（含外置资源）
-just build-macos-app     # 完整构建（SEA + Wails 壳 + 图标 + 组装 target/DSH.app）
-just install-macos-app   # 构建并安装到 /Applications/DSH.app
-just run-macos-app       # 运行 target/DSH.app
+```text
+examples/custom/
+  package.json        全部配置：
+                      - name/version/dependencies（npm 语义，直接复用）
+                      - dsh.profile.bundles：cordis bundle 列表
+                      - dsh.desktop：桌面特有（id/window/icon/dshHome）
+  cordis.patch.yml    profile patch 层（dsh 应用在 bundle 层之后）
+  icon.svg            应用图标（可选，dsh.desktop.icon 引用）
 ```
 
-Linux（须在 Linux 主机上执行，见下）：
+dsh 的 cordis 配置是分层 patch 合成：`dsh.profile.bundles` 按序叠加各
+bundle 包自带的 patch 层，最后叠加 `cordis.patch.yml`（用户层）。CLI 只
+负责把这份布局安装（`nub install`）、打包（SEA + 壳 + 组装）与分发，不
+修改任何 patch 语义。`settings.yaml`、`storages/`、`sessions/` 等用户
+运行时数据不属于工作区：首次启动后由应用在目标 DSH_HOME 中生成。
 
-```sh
-just build-linux-app     # 完整构建（SEA + Wails 壳 + 组装 target/linux/DSH + DSH.tar.gz）
+`package.json` 示例（examples/official）：
+
+```json
+{
+  "name": "dsh",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": { "@deepseek-ai/dsh": "0.1.0-rc.6" },
+  "dsh": {
+    "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"] },
+    "desktop": {
+      "id": "ai.deepseek.dsh",
+      "window": { "width": 1280, "height": 800, "minWidth": 800, "minHeight": 600 },
+      "icon": "icon.svg",
+      "dshHome": "xdg"
+    }
+  }
+}
 ```
 
-Windows（须在 Windows 主机上执行，见下）：
+`dsh.desktop` 字段：
 
-```sh
-just build-windows-app   # 完整构建（SEA + Wails 壳 + 组装 target/windows/DSH + DSH.zip）
-```
+- `id` — bundle 标识（macOS CFBundleIdentifier；缺省由 name 派生）
+- `window` — 窗口几何（缺省 1280x800，最小 800x600）
+- `icon` — 相对工作区的图标源（SVG）
+- `dshHome` — 运行时 DSH_HOME 策略：
+  - 缺省 / `xdg` — `xdg.DataHome/<name>/dsh-home`（[adrg/xdg](https://github.com/adrg/xdg)
+    规范：Linux `~/.local/share`、macOS `~/Library/Application Support`
+    等）。bundle 内置 dsh-home 种子，首次启动拷贝到该目录，之后读写都在
+    拷贝上，完全独立、不污染 `~/.dsh`
+  - `env` — 不设置 DSH_HOME，继承环境（`$DSH_HOME` 或默认 `~/.dsh`）
+  - 绝对路径 — DSH_HOME 固定为该路径，缺失部分从 bundle 种子补齐
 
-产物统一在 `target/`：`target/sea/`（SEA 产物与资源）、`target/DSH.app`（macOS 应用）、
-`target/dsh.icns`（macOS 图标）+ `target/dsh.iconset/`（macOS 多尺寸 PNG 集 16–1024）、
-`target/linux/`（Linux 应用）、`target/windows/`（Windows 应用）。
+## 构建原理（单命令做了什么）
+
+`bundle <workspace>` 依次执行：
+
+1. **profile 装配与安装**：把工作区拍平内容装配为 DSH_HOME 布局
+   `target/<name>/dsh-home/`（`profiles/web/package.json` 注入原生包信任
+   `allowBuilds`、`profiles/web/cordis.patch.yml`、`pnpm-workspace.yaml`
+   与 `.npmrc`——含 registry 映射 `@deepseek-ai` → npmjs、`@morlay` →
+   GitHub npm，以及构建目录本地 store 覆盖），运行 `nub install` 安装依赖
+   闭包（扁平布局，`autoInstallPeers` 保证 dsh 核心 peer 依赖完整）。
+2. **SEA 打包**（`internal/sea`）：把 profile 的 node_modules 闭包解引用
+   复制到 `target/<name>/sea/node_modules`，复制 `@deepseek-ai/dsh` 的
+   `config/` 与 `package.json`，生成 `sea-entry.mjs`（dsh CLI 入口）与
+   `tsdown.config.mjs`，调用工具链 tsdown（`target/tools`）产出
+   `sea/bin/dsh`。bundle 插件包（含 `dsh.desktop` 之外的依赖闭包）全部
+   一并打包进 SEA。
+3. **壳构建**：`go build ./internal/shell`（Wails v3）。
+4. **平台组装**（`internal/bundle`）：macOS `.app`（Info.plist、icns）、
+   Linux 目录 + `tar.gz`（hicolor 图标集）、Windows 目录 + `zip`（ico），
+   写入壳同目录 `appconfig.json` 与 DSH_HOME 种子 `dsh-home/`（不含用户
+   运行时数据）。
+
+`dev <workspace>` 组装开发布局 `target/<name>/dev/`（壳 + SEA + 资源 +
+dsh-home）并直接启动，DSH_HOME 指向构建出的 `target/<name>/dsh-home`。
 
 ## 目录结构
 
-- `apps/dsh-desktop/` — Wails 壳（Go），桌面应用入口与后端守护，详见 [README](apps/dsh-desktop/README.md)
-- `scripts/` — 构建脚本（TypeScript + [zx](https://google.github.io/zx/)）：
-  `sea-materialize.mts`（SEA 运行时资源实体化）、`make-macos-app.mts`（macOS 组装）、
-  `make-linux-app.mts`（Linux 组装）、`make-windows-app.mts`（Windows 组装）、
-  `icon.mts`（macOS 图标生成）
-- `deepseek-harness/` — 旧版克隆的上游源码（已 gitignore，构建不再使用，可删除）
-
-## 构建说明
-
-- `just sea` 依赖 `just dep`（`nub install`）安装 npm 发布的
-  `@deepseek-ai/dsh@0.0.1-rc.1` 及其依赖闭包；`sea-materialize.mts` 从该包复制
-  config 与 package.json，并从 `node_modules/.store` 实体化插件闭包到
-  `target/sea/node_modules`；tsdown 再内联 `node_modules/@deepseek-ai/dsh/lib/bin.js`
-  为 SEA 单文件。`dsh web` 启动时经 `require.resolve('@deepseek-ai/dsh-frontend/dist/index.html')`
-  解析前端 dist（npm 包内含）——缺失时后端启动即报 `dsh: frontend dist not built`
-  退出，表现为窗口停在启动页/空白。
-- macOS 构建命令带 `-macos-app` 后缀；Linux 构建命令带 `-linux-app` 后缀；Windows 构建
-  命令带 `-windows-app` 后缀；`default` 列出全部 recipe（`just --list`）。
-- **Linux 构建须在 Linux 主机上执行**：SEA（Node `--build-sea`）与 Wails 壳（cgo WebKitGTK）
-  均不支持交叉编译，macOS 上产出的 `target/sea` 不能用于 Linux。Linux 主机需安装
-  WebKitGTK 开发库（Wails 壳运行依赖）；图标由 sharp（libvips + librsvg）渲染，随 npm 预编译。
-- Linux 产物 `target/linux/DSH/`：`bin/dsh-shell`（壳）、`bin/dsh-server`（SEA）、
-  `config/`、`node_modules/`、`package.json`（资源，dsh-server 从 bin 上一级解析）、
-  `share/icons/hicolor/`（freedesktop 多尺寸图标集 16–512 + scalable SVG）；
-  另有 `DSH.tar.gz` 归档。
-- **Windows 构建须在 Windows 主机上执行**：SEA（Node `--build-sea`）与 Wails 壳
-  （WebView2）均不支持交叉编译，macOS 上产出的 `target/sea` 不能用于 Windows。壳以
-  GUI 子系统构建（`-ldflags "-H=windowsgui"`，启动不弹控制台黑窗），后端以
-  `CREATE_NO_WINDOW` 标志启动；退出收口用 Job Object（`KILL_ON_JOB_CLOSE`）按作业树
-  终止后端全树（Windows 无 POSIX 信号，SEA node 收不到优雅 SIGTERM）。
-  Windows 10 1803+ 自带 WebView2 运行时与 bsdtar（打包 `DSH.zip` 用，`-a` 按后缀选 zip）。
-- Windows 产物 `target/windows/DSH/`：`bin/dsh-shell.exe`（壳）、`bin/dsh-server.exe`（SEA）、
-  `config/`、`node_modules/`、`package.json`（资源，dsh-server 从 bin 上一级解析）、
-  `dsh.ico`（多尺寸 PNG 内嵌图标，纯 node 生成）；另有 `DSH.zip` 归档。
+- `cmd/deepseek-harness-desktop/` — 单命令入口（可 `go install`）
+- `internal/cli/` — 命令分发（bundle / dev / ls）
+- `internal/config/` — 工作区配置解析（package.json 的
+  `dsh.profile.bundles` 与 `dsh.desktop`）
+- `internal/profile/` — 拍平装配为 DSH_HOME 布局 + `nub install`
+- `internal/tools/` — 构建工具链（`target/tools`：tsdown / sharp）
+- `internal/sea/` — SEA 打包（staging + 生成入口/配置 + tsdown）
+- `internal/shell/` — Wails 壳（窗口 + 后端守护 + XDG DSH_HOME 策略），
+  构建为独立二进制 `dsh-shell`；`internal/shell/server/` 是后端进程生命周期
+  （平台差异：Unix 进程组信号 / Windows Job Object）
+- `internal/bundle/` — 平台组装、dev 布局与图标生成
+- `internal/fsutil/` — 构建/运行时共用复制工具
+- `examples/official/` — 官方 web profile 打包用例（无自定义）
+- `examples/custom/` — 自定义桌面用例（附加
+  `@morlay/session-persistence-rdb` 插件 bundle + patch 禁用 JSONL 持久化）
 
 ## 环境变量
 
-- 构建期：无（上游以 npm 包提供；升级 dsh 即改 package.json 中 `@deepseek-ai/dsh` 版本后 `just dep`）
-- 运行时（壳 `dsh-shell`）：`DSH_APP_WORKSPACE`（工作目录）、`DSH_APP_PORT`（后端端口），
-  详见 [dsh-desktop README](apps/dsh-desktop/README.md)
-- 透传给后端（`dsh-server`）：`DSH_HOME`（`$DSH_HOME/config.yaml` 配置覆盖、`$DSH_HOME/.env` 凭据）、
-  `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`（LLM 凭据）。壳启动后端前 source 用户 shell 配置，
-  使这些变量从终端环境继承；也可放调用目录 `.env`
+- 构建期：`DSH_DESKTOP_ROOT`（仓库根；`go install` 到 PATH 后需要，
+  `go run` 从仓库根执行时自动定位）
+- 运行时（壳）：`DSH_APP_DSH_HOME`（显式覆盖 DSH_HOME，开发/测试用）、
+  `DSH_APP_WORKSPACE`（工作目录，默认用户主目录）、`DSH_APP_PORT`
+  （后端端口，默认 `0` 由 OS 分配）
+- 透传给后端：`DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`（LLM 凭据，Unix
+  上启动前按 `$SHELL` source 用户 shell 配置继承）

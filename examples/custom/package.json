@@ -1,0 +1,29 @@
+{
+  "name": "dsh-custom",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "@morlay/session-persistence-rdb": "^0.0.1"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "@morlay/session-persistence-rdb"
+      ]
+    },
+    "desktop": {
+      "id": "ai.deepseek.dsh.custom",
+      "window": {
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600
+      },
+      "icon": "icon.svg",
+      "dshHome": "xdg"
+    }
+  }
+}
