@@ -28,7 +28,7 @@ func assembleMacOS(in Inputs) (string, error) {
 	if err := os.MkdirAll(contents, 0o755); err != nil {
 		return "", err
 	}
-	if _, err := assembleLayout(in, contents, true); err != nil {
+	if _, err := assembleLayout(in, contents); err != nil {
 		return "", err
 	}
 	// assembleLayout 产出的是 bin/；macOS 需要 MacOS/。

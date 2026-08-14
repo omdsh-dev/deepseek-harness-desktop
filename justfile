@@ -6,7 +6,7 @@
 bundle *args:
     go tool deepseek-harness-desktop bundle {{ args }}
 
-# 开发模式：构建并直接运行。
+# 开发模式：基于工作区起 dsh web 并打开浏览器。
 #   just dev examples/custom
 dev *args:
     go tool deepseek-harness-desktop dev {{ args }}

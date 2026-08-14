@@ -4,7 +4,7 @@
 //
 // 用法（go install 后任意目录，或仓库内 go tool）：
 //
-//	deepseek-harness-desktop dev <workspace>                 开发模式：构建并直接运行
+//	deepseek-harness-desktop dev <workspace>                  基于工作区起 dsh web 并打开浏览器
 //	deepseek-harness-desktop bundle --platform=os/arch <ws>  打包平台应用（默认本机平台）
 //
 // 选项：
@@ -22,8 +22,10 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/adrg/xdg"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/bundle"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/profile"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/sea"
 )
 
@@ -162,43 +164,30 @@ func Bundle(ws, platform string, skipInstall bool) (string, error) {
 	return appRoot, nil
 }
 
-// Dev 构建并直接运行（开发布局 target/<name>/dev，不组装平台应用）。
+// Dev 基于工作区直接起一个 dsh web 并打开浏览器页面（不组装桌面应用，
+// 无 Wails 壳）。等价于官方流程：
+//
+//	DSH_HOME=<xdg.DataHome>/<name> dsh web --patch <ws>/cordis.patch.yml
+//
+// 实现：DSH_HOME 固定为 XDG 数据目录（与打包后应用运行时一致），
+// $DSH_HOME/profiles/web 符号链接指向工作区——dsh 直接从工作区读
+// package.json（bundles）与 cordis.patch.yml（patch 层），工作区的
+// pnpm install 结果直接可见。
 func Dev(ws string, skipInstall bool) error {
-	root, ws, cfg, err := loadWorkspace(ws)
+	_, ws, cfg, err := loadWorkspace(ws)
 	if err != nil {
 		return err
 	}
 
 	fmt.Printf("==> dev %s（%s %s）\n", cfg.Name, config.ProfileName, cfg.Version)
 
-	// 1) SEA 后端。
-	seaExe, err := sea.Build(root, ws, cfg, skipInstall)
-	if err != nil {
+	// 1) 工程文件兜底 + 未安装时 pnpm install（复用工作区已有安装）。
+	if _, err := profile.Ensure(ws, skipInstall); err != nil {
 		return err
 	}
 
-	// 2) 壳二进制。
-	shellBin, err := buildShell(root, ws, cfg)
-	if err != nil {
-		return err
-	}
-
-	// 3) 开发布局（target/<name>/dev）。
-	binDir, err := bundle.AssembleDev(bundle.Inputs{
-		Root:      root,
-		Workspace: ws,
-		Cfg:       cfg,
-		SeaExe:    seaExe,
-		ShellBin:  shellBin,
-	})
-	if err != nil {
-		return err
-	}
-
-	// 4) 构造运行时 DSH_HOME（target/<name>/dsh-home）：dsh 固定从
-	//    $DSH_HOME/profiles/web 解析 profile，profiles/web 用符号链接指向
-	//    工作区——用户在工作区的 pnpm install 结果直接可见，无需复制。
-	homeDir := config.DSHHomeDir(root, cfg)
+	// 2) 构造运行时 DSH_HOME：xdg.DataHome/<name>，profiles/web → 工作区。
+	homeDir := filepath.Join(xdg.DataHome, cfg.Name)
 	if err := os.MkdirAll(filepath.Join(homeDir, "profiles"), 0o755); err != nil {
 		return err
 	}
@@ -209,11 +198,22 @@ func Dev(ws string, skipInstall bool) error {
 		}
 	}
 
-	// 5) 启动。
-	shellName, _ := bundle.BinNames()
-	shell := filepath.Join(binDir, shellName)
-	fmt.Printf("==> 启动 %s（DSH_HOME=%s）\n", shell, homeDir)
-	return runDetachedEnv(shell, []string{"DSH_APP_DSH_HOME=" + homeDir})
+	// 3) 启动 dsh web（工作区闭包里的 dsh），解析就绪 URL。
+	dshBin := filepath.Join(ws, "node_modules", ".bin", "dsh")
+	if _, err := os.Stat(dshBin); err != nil {
+		return fmt.Errorf("工作区未安装 dsh（%s）；先 pnpm install 或去掉 --skip-install", dshBin)
+	}
+	url, err := runWeb(dshBin, homeDir)
+	if err != nil {
+		return err
+	}
+
+	// 4) 打开浏览器页面。
+	fmt.Printf("==> 打开 %s（Ctrl+C 退出）\n", url)
+	if err := openURL(url); err != nil {
+		fmt.Fprintf(os.Stderr, "[warn] 打开浏览器失败: %v\n", err)
+	}
+	return nil
 }
 
 // loadWorkspace 解析工作区并返回（仓库根, 绝对工作区路径, 配置）。

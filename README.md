@@ -19,7 +19,9 @@ deepseek-harness-desktop bundle examples/custom     # 打包当前平台的应�
 deepseek-harness-desktop bundle --platform=macos/arm64 examples/custom   # 显式声明平台
 ```
 
-- `dev <workspace>` — 构建并直接运行桌面窗口（迭代开发用），DSH_HOME 指向构建目录
+- `dev <workspace>` — 基于工作区直接起 `dsh web` 并打开浏览器页面（等价
+  官方流程 `DSH_HOME=<xdg.DataHome>/<name> dsh web`，profiles/web 指向工作区；
+  Ctrl+C 退出）
 - `bundle <workspace>` — 打包为平台应用，产物在 `target/<name>/` 下
 
 命令以仓库根下的 `target/` 为产物目录（全部产物集中于此）。`examples/<name>`
