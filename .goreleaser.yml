@@ -1,8 +1,7 @@
 # 发布 cmd/deepseek-harness-desktop（纯 Go 单命令）到 GitHub Releases。
 # 发布物是 CLI 二进制：无 cgo 依赖，CGO_ENABLED=0 可全平台交叉编译，
 # 因此由 goreleaser 单 runner 构建 + 打包 + 发布。
-#   - v* tag     → goreleaser release（固定版本，正式 release）
-#   - main 分支  → goreleaser 打包 + workflow gh release（tag: latest，pre-release）
+#   - v* tag → goreleaser release（固定版本，正式 release）
 version: 2
 
 project_name: deepseek-harness-desktop
@@ -40,3 +39,5 @@ release:
     name: deepseek-harness-desktop
   # vX.Y.Z 无预发布后缀 → 正式 release；vX.Y.Z-rc.N 自动为 pre-release。
   prerelease: auto
+  # 同一 tag 重复发布时，goreleaser 自动删除同名旧 asset 后重传。
+  replace_existing_artifacts: true
