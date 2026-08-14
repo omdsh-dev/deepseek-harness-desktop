@@ -6,6 +6,7 @@ tool github.com/omdsh-dev/deepseek-harness-desktop/cmd/deepseek-harness-desktop
 
 require (
 	github.com/adrg/xdg v0.5.3
+	github.com/git-pkgs/gitignore v1.2.0
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 	github.com/wailsapp/wails/v3 v3.0.0-beta.8

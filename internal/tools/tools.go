@@ -1,9 +1,9 @@
-// Package tools 管理构建工具链（target/tools/）。
+// Package tools 管理构建工具链（工作区 target/tools/）。
 //
-// 根仓库是纯 Go，不提交任何 npm 清单；构建工具（tsdown 打包 SEA）按需
-// 安装到 target/tools（pnpm install，构建目录本地 store），与工作区解耦。
-// target/ 统一承载全部产物，无其他临时目录。图标渲染不依赖工具链：由
-// internal/bundle 用 Go 的 image 库直接处理图标源。
+// 工作区是拍平的 desktop 定义，不提交任何 npm 清单；构建工具（tsdown
+// 打包 SEA）按需安装到工作区 target/tools（pnpm install，构建目录本地
+// store），与工作区依赖解耦。target/ 统一承载全部产物，无其他临时目录。
+// 图标渲染不依赖工具链：由 internal/bundle 用 Go 的 image 库直接处理图标源。
 //
 // 工具链的工程文件模板（package.json / .npmrc / pnpm-workspace.yaml）以
 // go:embed 内嵌在 templates/ 下。
@@ -25,15 +25,15 @@ var templates embed.FS
 // DirName 是工具链目录名（target/ 下）。
 const DirName = "tools"
 
-// Dir 返回工具链目录。
-func Dir(root string) string {
-	return filepath.Join(root, "target", DirName)
+// Dir 返回工具链目录（位于工作区 target/tools）。
+func Dir(ws string) string {
+	return filepath.Join(ws, "target", DirName)
 }
 
 // Ensure 确保工具链已安装，返回工具链目录。已安装（tsdown 可执行存在）
 // 时跳过安装。
-func Ensure(root string) (string, error) {
-	dir := Dir(root)
+func Ensure(ws string) (string, error) {
+	dir := Dir(ws)
 	bin := filepath.Join(dir, "node_modules", ".bin", "tsdown")
 	if _, err := os.Stat(bin); err == nil {
 		return dir, nil
@@ -71,8 +71,8 @@ func Ensure(root string) (string, error) {
 }
 
 // Run 运行工具链里已安装的 bin（如 tsdown、node 脚本），cwd 为 dir。
-func Run(root, dir, bin string, args ...string) error {
-	path := filepath.Join(Dir(root), "node_modules", ".bin", bin)
+func Run(ws, dir, bin string, args ...string) error {
+	path := filepath.Join(Dir(ws), "node_modules", ".bin", bin)
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("tools bin %s 缺失（先 Ensure）: %w", bin, err)
 	}

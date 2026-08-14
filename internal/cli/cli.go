@@ -29,6 +29,7 @@ import (
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/bundle"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/gitignore"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/profile"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/sea"
 )
@@ -201,17 +202,25 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 		return "", err
 	}
 
-	// 构建缓存：工作区 dir hash + 平台。
-	statePath := filepath.Join(config.BuildDir(root, cfg), ".build-state.json")
+	// 工作区 .gitignore：被忽略的内容（构建产物、缓存等）不参与 hash，
+	// 也不进 DSH_HOME 种子（bundle 内部同规则）。
+	gi, err := gitignore.Load(ws)
+	if err != nil {
+		return "", fmt.Errorf("load .gitignore: %w", err)
+	}
+	hashIgnored := gi.Ignored
+
+	// 构建缓存：工作区 dir hash + 平台。产物位于工作区 target/ 下。
+	statePath := filepath.Join(config.BuildDir(ws, cfg), ".build-state.json")
 	if !force {
-		wsHash, err := fsutil.DirHash(ws, hashSkip)
+		wsHash, err := fsutil.DirHash(ws, hashSkip, hashIgnored)
 		if err != nil {
 			return "", fmt.Errorf("计算工作区 hash: %w", err)
 		}
 		if state, err := os.ReadFile(statePath); err == nil {
 			var st buildState
 			if json.Unmarshal(state, &st) == nil && st.Hash == wsHash && st.Platform == platformName() {
-				appRoot := bundle.AppRoot(root, cfg)
+				appRoot := bundle.AppRoot(ws, cfg)
 				if dirExists(appRoot) {
 					fmt.Printf("==> 无变化（%s），复用 %s\n", st.Hash[:12], appRoot)
 					if install {
@@ -228,7 +237,7 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	fmt.Printf("==> 打包 %s（%s %s）\n", cfg.Name, config.ProfileName, cfg.Version)
 
 	// 1) SEA 后端。
-	seaExe, err := sea.Build(root, ws, cfg, skipInstall)
+	seaExe, err := sea.Build(ws, cfg, skipInstall)
 	if err != nil {
 		return "", err
 	}
@@ -242,7 +251,6 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 
 	// 3) 平台组装。
 	appRoot, err := bundle.Assemble(bundle.Inputs{
-		Root:      root,
 		Workspace: ws,
 		Cfg:       cfg,
 		SeaExe:    seaExe,
@@ -254,11 +262,11 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	fmt.Printf("==> 产物: %s\n", appRoot)
 
 	// 记录构建状态。
-	wsHash, err := fsutil.DirHash(ws, hashSkip)
+	wsHash, err := fsutil.DirHash(ws, hashSkip, hashIgnored)
 	if err == nil {
 		st := buildState{Hash: wsHash, Platform: platformName()}
 		if raw, err := json.Marshal(st); err == nil {
-			if err := os.MkdirAll(config.BuildDir(root, cfg), 0o755); err == nil {
+			if err := os.MkdirAll(config.BuildDir(ws, cfg), 0o755); err == nil {
 				_ = os.WriteFile(statePath, raw, 0o644)
 			}
 		}
@@ -280,7 +288,8 @@ type buildState struct {
 }
 
 // hashSkip 是工作区 dir hash 排除的名字（安装簿记与运行时生成物；
-// pnpm-lock.yaml 锁定依赖闭包，必须参与 hash）。
+// pnpm-lock.yaml 锁定依赖闭包，必须参与 hash）。构建产物（如 target/）
+// 不在此列——由工作区 .gitignore 表达，hash 遵循它排除（见 Bundle）。
 var hashSkip = map[string]bool{
 	".git":         true,
 	"node_modules": true,

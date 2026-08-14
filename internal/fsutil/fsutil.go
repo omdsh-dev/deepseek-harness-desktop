@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -70,8 +71,16 @@ func CopyDir(src, dst string) error {
 }
 
 // CopyDirDeref 递归复制目录并把 symlink 解引用为实体（保留可执行位）。
-// skip 里的名字（任意层级的文件或目录）整体跳过。
-func CopyDirDeref(src, dst string, skip map[string]bool) error {
+// skip 里的名字（任意层级的文件或目录）整体跳过；ignored 非 nil 时，
+// 相对路径（/ 分隔）被其判为忽略的条目也跳过（用于遵循 .gitignore）。
+// 若目标目录位于源内部（例如产物写回工作区），复制会跳过目标自身的
+// 子树，避免把复制中的内容递归包含进来（不依赖任何目录名约定）。
+func CopyDirDeref(src, dst string, skip map[string]bool, ignored func(rel string, isDir bool) bool) error {
+	// 目标相对源的前缀（仅当目标在源内部时非空）。
+	selfPrefix := ""
+	if rel, err := filepath.Rel(src, dst); err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." && !filepath.IsAbs(rel) {
+		selfPrefix = filepath.ToSlash(rel)
+	}
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -85,7 +94,14 @@ func CopyDirDeref(src, dst string, skip map[string]bool) error {
 		if err != nil {
 			return err
 		}
-		if skip[filepath.Base(path)] {
+		slashRel := filepath.ToSlash(rel)
+		if selfPrefix != "" && (slashRel == selfPrefix || strings.HasPrefix(selfPrefix, slashRel+"/")) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if skip[filepath.Base(path)] || (ignored != nil && ignored(slashRel, info.IsDir())) {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
@@ -125,7 +141,7 @@ func copyDeref(src, dst string) error {
 		return copyDeref(link, dst)
 	}
 	if info.IsDir() {
-		return CopyDirDeref(src, dst, nil)
+		return CopyDirDeref(src, dst, nil, nil)
 	}
 	return CopyFile(src, dst)
 }
@@ -146,15 +162,20 @@ func RemoveAll(path string) error {
 
 // DirHash 计算目录内容的稳定哈希：按相对路径排序后对每个文件
 // sha256(相对路径 + 文件内容) 聚合。skip 里的名字（文件或目录，任意层级）
-// 排除。用于构建缓存判断（输入无变化则跳过重新打包）。
-func DirHash(root string, skip map[string]bool) (string, error) {
+// 排除；ignored 非 nil 时，相对路径（/ 分隔）被其判为忽略的条目也排除
+// （用于遵循 .gitignore）。用于构建缓存判断（输入无变化则跳过重新打包）。
+func DirHash(root string, skip map[string]bool, ignored func(rel string, isDir bool) bool) (string, error) {
 	h := sha256.New()
 	var paths []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if skip[d.Name()] {
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if skip[d.Name()] || (ignored != nil && ignored(filepath.ToSlash(rel), d.IsDir())) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -162,10 +183,6 @@ func DirHash(root string, skip map[string]bool) (string, error) {
 		}
 		if d.IsDir() {
 			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
 		}
 		paths = append(paths, rel)
 		return nil

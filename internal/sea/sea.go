@@ -42,8 +42,8 @@ var skipEntries = map[string]bool{
 // 可执行文件旁。
 
 // SeaExe 返回 SEA 可执行文件路径。
-func SeaExe(root string, cfg *config.Config) string {
-	exe := filepath.Join(config.SeaDir(root, cfg), "bin", "dsh")
+func SeaExe(ws string, cfg *config.Config) string {
+	exe := filepath.Join(config.SeaDir(ws, cfg), "bin", "dsh")
 	if runtime.GOOS == "windows" {
 		exe += ".exe"
 	}
@@ -51,16 +51,17 @@ func SeaExe(root string, cfg *config.Config) string {
 }
 
 // Build 执行一次完整的 SEA 打包，返回 SEA 可执行文件路径。
-func Build(root, ws string, cfg *config.Config, skipInstall bool) (string, error) {
+// 全部产物（暂存、工具链、可执行）都位于工作区 target/ 下。
+func Build(ws string, cfg *config.Config, skipInstall bool) (string, error) {
 	profileDir, err := profile.Ensure(ws, skipInstall)
 	if err != nil {
 		return "", err
 	}
-	if _, err := tools.Ensure(root); err != nil {
+	if _, err := tools.Ensure(ws); err != nil {
 		return "", err
 	}
 
-	staging := config.SeaDir(root, cfg)
+	staging := config.SeaDir(ws, cfg)
 	if err := fsutil.RemoveAll(staging); err != nil {
 		return "", fmt.Errorf("clean staging: %w", err)
 	}
@@ -71,7 +72,7 @@ func Build(root, ws string, cfg *config.Config, skipInstall bool) (string, error
 	// 1) 闭包：profile node_modules → sea/node_modules（解引用）。
 	nmSrc := filepath.Join(profileDir, "node_modules")
 	nmDst := filepath.Join(staging, "node_modules")
-	if err := fsutil.CopyDirDeref(nmSrc, nmDst, skipEntries); err != nil {
+	if err := fsutil.CopyDirDeref(nmSrc, nmDst, skipEntries, nil); err != nil {
 		return "", fmt.Errorf("copy closure: %w", err)
 	}
 
@@ -103,11 +104,11 @@ func Build(root, ws string, cfg *config.Config, skipInstall bool) (string, error
 	}
 
 	// 4) 构建。
-	if err := tools.Run(root, staging, "tsdown", "-c", "tsdown.config.mjs"); err != nil {
+	if err := tools.Run(ws, staging, "tsdown", "-c", "tsdown.config.mjs"); err != nil {
 		return "", err
 	}
 
-	exe := SeaExe(root, cfg)
+	exe := SeaExe(ws, cfg)
 	if _, err := os.Stat(exe); err != nil {
 		return "", fmt.Errorf("SEA 产物缺失: %w", err)
 	}

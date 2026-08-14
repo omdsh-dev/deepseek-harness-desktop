@@ -20,7 +20,7 @@ import (
 //
 // 完成后打包 target/<name>/linux/<Name>.tar.gz（顶层目录 <Name>/）。
 func assembleLinux(in Inputs) (string, error) {
-	root := filepath.Join(config.BuildDir(in.Root, in.Cfg), "linux")
+	root := filepath.Join(config.BuildDir(in.Workspace, in.Cfg), "linux")
 	appRoot := filepath.Join(root, in.Cfg.Name)
 	if err := fsutil.RemoveAll(root); err != nil {
 		return "", err

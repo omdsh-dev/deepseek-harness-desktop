@@ -19,7 +19,7 @@ import (
 //
 // 完成后打包 target/<name>/windows/<Name>.zip（顶层目录 <Name>/）。
 func assembleWindows(in Inputs) (string, error) {
-	root := filepath.Join(config.BuildDir(in.Root, in.Cfg), "windows")
+	root := filepath.Join(config.BuildDir(in.Workspace, in.Cfg), "windows")
 	appRoot := filepath.Join(root, in.Cfg.Name)
 	if err := fsutil.RemoveAll(root); err != nil {
 		return "", err

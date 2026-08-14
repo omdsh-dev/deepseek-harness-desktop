@@ -17,9 +17,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/gitignore"
 )
 
 // appConfig 与 internal/shell 的 appconfig.json 结构一致（壳读取）。
@@ -38,7 +40,8 @@ type appConfig struct {
 }
 
 // seedSkip 是复制 DSH_HOME 种子时排除的名字（安装簿记、工程文件与运行时
-// 用户数据；basename 命中即跳过）。
+// 用户数据；basename 命中即跳过）。构建产物（如 target/）不在此列——由
+// 工作区 .gitignore 表达，遵循它排除（见 assembleLayout 的 seedIgnored）。
 var seedSkip = map[string]bool{
 	".nub-store":          true,
 	".store":              true,
@@ -56,16 +59,15 @@ var seedSkip = map[string]bool{
 
 // Inputs 是一次装配的全部输入。
 type Inputs struct {
-	Root      string // 仓库根（target/ 定位）
-	Workspace string // 工作区（图标源）
+	Workspace string // 工作区（target/ 产物根与图标源）
 	Cfg       *config.Config
 	SeaExe    string // SEA 可执行（sea/bin/dsh）
 	ShellBin  string // 壳二进制（go build ./internal/shell 的产物）
 }
 
-// AppRoot 返回平台应用的产物根目录。
-func AppRoot(root string, cfg *config.Config) string {
-	build := config.BuildDir(root, cfg)
+// AppRoot 返回平台应用的产物根目录（位于工作区 target/ 下）。
+func AppRoot(ws string, cfg *config.Config) string {
+	build := config.BuildDir(ws, cfg)
 	switch runtime.GOOS {
 	case "darwin":
 		return filepath.Join(build, cfg.Name+".app")
@@ -115,7 +117,7 @@ func assembleLayout(in Inputs, appRoot string) (string, error) {
 
 	// SEA 运行时资源：config/、node_modules/、package.json（从 staging 复制，
 	// dsh-server 从可执行文件上一级解析）。
-	staging := config.SeaDir(in.Root, in.Cfg)
+	staging := config.SeaDir(in.Workspace, in.Cfg)
 	for _, name := range []string{"config", "node_modules", "package.json"} {
 		src := filepath.Join(staging, name)
 		if err := fsutil.CopyDir(src, filepath.Join(appRoot, name)); err != nil {
@@ -126,11 +128,23 @@ func assembleLayout(in Inputs, appRoot string) (string, error) {
 	// DSH_HOME 种子：工作区（profile 拍平内容）→ appRoot/dsh-home/profiles/web
 	// （解引用：pnpm 安装的 node_modules 是 store 链接）。dsh 运行时固定从
 	// $DSH_HOME/profiles/<name> 解析 profile。
+	// 种子遵循工作区 .gitignore：被忽略的条目（构建产物、缓存等）不进种子；
+	// node_modules 例外——SEA 运行时需要依赖闭包，虽被 git 忽略但必须保留。
 	homeRoot := filepath.Join(appRoot, "dsh-home")
 	if err := os.MkdirAll(filepath.Join(homeRoot, "profiles"), 0o755); err != nil {
 		return "", err
 	}
-	if err := fsutil.CopyDirDeref(in.Workspace, filepath.Join(homeRoot, "profiles", config.ProfileName), seedSkip); err != nil {
+	gi, err := gitignore.Load(in.Workspace)
+	if err != nil {
+		return "", fmt.Errorf("load .gitignore: %w", err)
+	}
+	seedIgnored := func(rel string, isDir bool) bool {
+		if rel == "node_modules" || strings.HasPrefix(rel, "node_modules/") {
+			return false
+		}
+		return gi.Ignored(rel, isDir)
+	}
+	if err := fsutil.CopyDirDeref(in.Workspace, filepath.Join(homeRoot, "profiles", config.ProfileName), seedSkip, seedIgnored); err != nil {
 		return "", fmt.Errorf("copy dsh-home seed: %w", err)
 	}
 

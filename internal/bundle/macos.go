@@ -16,7 +16,7 @@ import (
 //	Contents/{config,node_modules,package.json,dsh-home}
 //	Contents/Info.plist
 func assembleMacOS(in Inputs) (string, error) {
-	appRoot := filepath.Join(config.BuildDir(in.Root, in.Cfg), in.Cfg.Name+".app")
+	appRoot := filepath.Join(config.BuildDir(in.Workspace, in.Cfg), in.Cfg.Name+".app")
 	if err := fsutil.RemoveAll(appRoot); err != nil {
 		return "", err
 	}

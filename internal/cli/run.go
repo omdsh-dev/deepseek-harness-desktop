@@ -10,10 +10,12 @@ import (
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
 )
 
-// buildShell 用仓库根的 Go 模块构建壳二进制（./internal/shell），输出到
-// target/<name>/.shell/。
+// buildShell 用 desktop 源码树的 Go 模块构建壳二进制（./internal/shell），
+// 输出到工作区 target/<name>/.shell/。root 是 desktop 源码 checkout
+// （go build 的模块根，须含 go.mod 与 internal/shell），ws 是工作区
+// （产物根）。
 func buildShell(root, ws string, cfg *config.Config) (string, error) {
-	outDir := filepath.Join(config.BuildDir(root, cfg), ".shell")
+	outDir := filepath.Join(config.BuildDir(ws, cfg), ".shell")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return "", err
 	}

@@ -123,26 +123,26 @@ func Load(ws string) (*Config, error) {
 	return cfg, nil
 }
 
-// TargetDir 返回仓库 target/ 目录。
-func TargetDir(root string) string {
-	return filepath.Join(root, "target")
+// TargetDir 返回产物根 target/ 目录（位于工作区，非 desktop 源码树）。
+func TargetDir(ws string) string {
+	return filepath.Join(ws, "target")
 }
 
-// BuildDir 返回该 desktop 的构建目录（target/<name>/）。
-func BuildDir(root string, cfg *Config) string {
-	return filepath.Join(TargetDir(root), cfg.Name)
+// BuildDir 返回该 desktop 的构建目录（target/<name>/，位于工作区）。
+func BuildDir(ws string, cfg *Config) string {
+	return filepath.Join(TargetDir(ws), cfg.Name)
 }
 
 // SeaDir 返回 SEA 打包暂存目录（target/<name>/sea）。
-func SeaDir(root string, cfg *Config) string {
-	return filepath.Join(BuildDir(root, cfg), "sea")
+func SeaDir(ws string, cfg *Config) string {
+	return filepath.Join(BuildDir(ws, cfg), "sea")
 }
 
 // DSHHomeDir 返回构建出的 DSH_HOME 种子目录（target/<name>/dsh-home）：
 // dev 模式在此构造 profiles/web（指向工作区），bundle 种子由此复制。运行时
 // DSH_HOME 由壳按 dshHome 策略解析（xdg 策略为 xdg.DataHome/<name>）。
-func DSHHomeDir(root string, cfg *Config) string {
-	return filepath.Join(BuildDir(root, cfg), "dsh-home")
+func DSHHomeDir(ws string, cfg *Config) string {
+	return filepath.Join(BuildDir(ws, cfg), "dsh-home")
 }
 
 func sanitizeID(s string) string {
