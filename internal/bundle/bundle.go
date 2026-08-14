@@ -6,8 +6,8 @@
 //	Windows target/<name>/windows/<Name>/{bin,config,node_modules,package.json,dsh-home,dsh.ico}
 //	dev     target/<name>/dev/{bin,config,node_modules,package.json,dsh-home}
 //
-// dsh-home 是打包进应用的 DSH_HOME 种子（profiles/web/ 等，由 profile 包构建），
-// 由 profile 包构建），壳在运行时按 appconfig 的 dshHome 策略落位
+// dsh-home 是打包进应用的 DSH_HOME 种子（profiles/web/ 等，由 profile 包
+// 构建），壳在运行时按 appconfig 的 dshHome 策略落位
 // （xdg 数据目录 / 固定路径 / 继承环境）。
 package bundle
 

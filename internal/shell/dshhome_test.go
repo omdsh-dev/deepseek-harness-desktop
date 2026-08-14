@@ -34,7 +34,8 @@ func TestResolveDSHHomeOverride(t *testing.T) {
 	}
 }
 
-// TestResolveDSHHomeXdg：xdg 策略把种子拷贝到 XDG_DATA_HOME/<name>/dsh-home。
+// TestResolveDSHHomeXdg：xdg 策略把种子内容拷贝到 XDG_DATA_HOME/<name>
+// （与 dev 的运行时 home 一致，不再加 dsh-home 子目录）。
 func TestResolveDSHHomeXdg(t *testing.T) {
 	dataHome := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dataHome)
@@ -62,12 +63,12 @@ func TestResolveDSHHomeXdg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(dataHome, "dsh-test", "dsh-home")
+	want := filepath.Join(dataHome, "dsh-test")
 	if got != want {
 		t.Fatalf("应返回 %q，得到 %q", want, got)
 	}
 	if !dirExists(filepath.Join(got, "profiles", "web")) {
-		t.Fatalf("首次启动应拷贝种子到 %s", got)
+		t.Fatalf("首次启动应把种子内容拷贝到 %s", got)
 	}
 	if _, err := os.Stat(filepath.Join(got, "settings.yaml")); err != nil {
 		t.Fatalf("种子文件缺失: %v", err)

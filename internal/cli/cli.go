@@ -1,15 +1,17 @@
 // Package cli 实现 deepseek-harness-desktop 单命令：把工作区（examples/
-// 下的拍平 desktop 定义：package.json + cordis.patch.yml + dsh.desktop.
-// yaml）打包为独立自定义桌面。
+// 下的拍平 desktop 定义：package.json + cordis.patch.yml）打包为独立
+// 自定义桌面。
 //
 // 用法（go install 后任意目录，或仓库内 go tool）：
 //
 //	deepseek-harness-desktop dev <workspace>                  基于工作区起 dsh web 并打开浏览器
 //	deepseek-harness-desktop bundle --platform=os/arch <ws>  打包平台应用（默认本机平台）
+//	deepseek-harness-desktop plugin add <package...>         代理 dsh plugin add，修改工作区的 bundles
 //
 // 选项：
 //
 //	--skip-install   跳过依赖安装（使用已有安装）
+//	--workspace=<ws> plugin 目标工作区（缺省当前目录）
 //
 // 全部产物在仓库根 target/ 下（target/tools 工具链、target/<name>/ 各
 // desktop 的 profile 安装 / SEA / 应用包）。
@@ -36,6 +38,10 @@ const usage = `deepseek-harness-desktop — 把 dsh 的 --profile web 与 cordis
 用法（go install 后任意目录，或仓库内 go tool）：
   deepseek-harness-desktop dev <workspace>                  基于工作区起 dsh web 并打开浏览器
   deepseek-harness-desktop bundle [--platform=os/arch] [--force] [--install] <workspace>
+  deepseek-harness-desktop plugin add [--workspace=<path>] <package...>
+                                                            代理 dsh plugin add：在工作区跑 pnpm add，
+                                                            并把声明 dsh.bundle 的依赖加入
+                                                            dsh.profile.bundles（不安装到全局 DSH_HOME）
 
 选项：
   --platform=os/arch   声明目标平台（默认本机；SEA/壳不支持交叉编译）
@@ -43,6 +49,8 @@ const usage = `deepseek-harness-desktop — 把 dsh 的 --profile web 与 cordis
   --install            打包后安装到当前平台（macOS /Applications、
                        Linux XDG data + .desktop、Windows %LOCALAPPDATA%\Programs）
   --skip-install       跳过依赖安装（使用已有安装）
+  --workspace=<path>   plugin add 的目标工作区（缺省当前目录）
+  --profile=<name>     plugin add 兼容 dsh 写法；desktop 只有 web，仅接受 web
 
 工作区是拍平的 desktop 定义（见 examples/official、examples/custom）：
   package.json       全部配置：name/version/dependencies（npm 语义）、
@@ -51,7 +59,7 @@ const usage = `deepseek-harness-desktop — 把 dsh 的 --profile web 与 cordis
   icon.svg           应用图标（可选，dsh.desktop.icon 引用）
 
 settings.yaml 等用户运行时数据不属于工作区：首次启动后由应用在
-DSH_HOME（XDG_DATA_HOME/<name>/dsh-home）中生成。
+DSH_HOME（XDG_DATA_HOME/<name>）中生成。
 
 全部产物在仓库根 target/ 下。
 `
@@ -62,6 +70,8 @@ func Run(args []string) int {
 	force := false
 	install := false
 	platform := ""
+	workspace := ""
+	profileName := ""
 	rest := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -81,6 +91,24 @@ func Run(args []string) int {
 			platform = args[i]
 		case strings.HasPrefix(a, "--platform="):
 			platform = strings.TrimPrefix(a, "--platform=")
+		case a == "--workspace":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "--workspace 需要参数（工作区路径）")
+				return 2
+			}
+			i++
+			workspace = args[i]
+		case strings.HasPrefix(a, "--workspace="):
+			workspace = strings.TrimPrefix(a, "--workspace=")
+		case a == "--profile":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "--profile 需要参数（desktop 只有 web）")
+				return 2
+			}
+			i++
+			profileName = args[i]
+		case strings.HasPrefix(a, "--profile="):
+			profileName = strings.TrimPrefix(a, "--profile=")
 		default:
 			rest = append(rest, a)
 		}
@@ -111,6 +139,29 @@ func Run(args []string) int {
 		}
 		if _, err := Bundle(rest[1], platform, force, install, skipInstall); err != nil {
 			fmt.Fprintf(os.Stderr, "bundle 失败：%v\n", err)
+			return 1
+		}
+		return 0
+	case "plugin":
+		if len(rest) < 2 || rest[1] != "add" {
+			fmt.Fprintln(os.Stderr, "用法：deepseek-harness-desktop plugin add [--workspace=<path>] <package...>")
+			return 2
+		}
+		if profileName != "" && profileName != config.ProfileName {
+			fmt.Fprintf(os.Stderr, "desktop 只有 %s profile（--profile=%s 无效）\n", config.ProfileName, profileName)
+			return 2
+		}
+		pkgs := rest[2:]
+		if len(pkgs) == 0 {
+			fmt.Fprintln(os.Stderr, "用法：deepseek-harness-desktop plugin add [--workspace=<path>] <package...>")
+			return 2
+		}
+		ws := workspace
+		if ws == "" {
+			ws = "." // 缺省当前目录（与 dsh plugin 在 profile 目录操作一致）
+		}
+		if err := PluginAdd(ws, pkgs, skipInstall); err != nil {
+			fmt.Fprintf(os.Stderr, "plugin add 失败：%v\n", err)
 			return 1
 		}
 		return 0

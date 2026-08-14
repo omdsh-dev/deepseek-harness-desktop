@@ -11,6 +11,12 @@ bundle *args:
 dev *args:
     go tool deepseek-harness-desktop dev {{ args }}
 
+# 向工作区添加 dsh 插件（代理 dsh plugin add，修改工作区 bundles）。
+#   just plugin add --workspace examples/custom @foo/bar
+#   cd examples/custom && just plugin add @foo/bar
+plugin *args:
+    go tool deepseek-harness-desktop plugin {{ args }}
+
 test:
     go test ./...
 

@@ -138,8 +138,9 @@ func SeaDir(root string, cfg *Config) string {
 	return filepath.Join(BuildDir(root, cfg), "sea")
 }
 
-// DSHHomeDir 返回构建出的运行时 DSH_HOME（target/<name>/dsh-home）：
-// dev 模式在此构造 profiles/web（指向工作区），bundle 种子由此复制。
+// DSHHomeDir 返回构建出的 DSH_HOME 种子目录（target/<name>/dsh-home）：
+// dev 模式在此构造 profiles/web（指向工作区），bundle 种子由此复制。运行时
+// DSH_HOME 由壳按 dshHome 策略解析（xdg 策略为 xdg.DataHome/<name>）。
 func DSHHomeDir(root string, cfg *Config) string {
 	return filepath.Join(BuildDir(root, cfg), "dsh-home")
 }

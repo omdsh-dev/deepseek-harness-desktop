@@ -10,8 +10,8 @@ import (
 )
 
 // seedDirName 是 bundle 内 DSH_HOME 种子目录名（位于壳可执行文件上一级）。
-// 打包时 CLI 把构建出的 DSH_HOME 布局（profiles/web/、settings.yaml 等）
-// 复制到这里。
+// 打包时 CLI 把构建出的 profile 布局（profiles/web/）复制到这里；运行时按
+// dshHome 策略把种子内容合并进目标 DSH_HOME（xdg 策略即 xdg.DataHome/<name>）。
 const seedDirName = "dsh-home"
 
 // 复制时排除的目录（安装簿记与 store，非 dsh 运行时所需）。
@@ -24,11 +24,12 @@ var seedSkipDirs = map[string]bool{
 // resolveDSHHome 按 appconfig 的 dshHome 策略解析 DSH_HOME：
 //
 //	DSH_APP_DSH_HOME（环境变量） — 显式覆盖，原样返回（开发/测试用）；
-//	xdg（默认）                  — XDG 数据目录：xdg.DataHome/<name>/dsh-home
+//	xdg（默认）                  — XDG 数据目录：xdg.DataHome/<name>
 //	                               （Linux ~/.local/share、macOS
 //	                               ~/Library/Application Support 等，见
-//	                               github.com/adrg/xdg）。首次启动把 bundle 内
-//	                               种子拷贝过去，之后读写都在拷贝上；
+//	                               github.com/adrg/xdg），与 dev 的运行时
+//	                               home 一致。首次启动把 bundle 内种子
+//	                               拷贝进去，之后读写都在拷贝上；
 //	<绝对路径>                    — 固定使用该目录；若 profiles/web 缺失且
 //	                               种子存在，从种子补齐缺失文件；
 //	env                          — 返回空串，不设置 DSH_HOME（继承环境）。
@@ -45,10 +46,10 @@ func resolveDSHHome(cfg appConfig, exeDir string) (string, error) {
 	case "env":
 		return "", nil
 	case "xdg":
-		dst := filepath.Join(xdg.DataHome, cfg.Name, seedDirName)
+		dst := filepath.Join(xdg.DataHome, cfg.Name)
 		if hasSeed && !dirExists(filepath.Join(dst, "profiles", cfg.Profile)) {
 			if err := copySeed(seed, dst); err != nil {
-				return "", fmt.Errorf("首次启动拷贝 dsh-home 到 %s: %w", dst, err)
+				return "", fmt.Errorf("首次启动拷贝 dsh-home 种子到 %s: %w", dst, err)
 			}
 		}
 		return dst, nil
@@ -59,7 +60,7 @@ func resolveDSHHome(cfg appConfig, exeDir string) (string, error) {
 		}
 		if hasSeed && !dirExists(filepath.Join(dst, "profiles", cfg.Profile)) {
 			if err := copySeed(seed, dst); err != nil {
-				return "", fmt.Errorf("补齐 dsh-home 到 %s: %w", dst, err)
+				return "", fmt.Errorf("补齐 dsh-home 种子到 %s: %w", dst, err)
 			}
 		}
 		return dst, nil
