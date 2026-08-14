@@ -1,0 +1,85 @@
+# 发布 cmd/deepseek-harness-desktop（纯 Go 单命令，goreleaser 交叉编译）：
+#   - main 分支 push → 重建 latest pre-release（tag: latest，GitHub pre-release，
+#     不抢占正式 Latest 徽标）
+#   - v* tag push     → 固定版本 release（vX.Y.Z，正式版，自动成为 Latest）
+# 同一 tag 重复构建时先清空旧 release（asset 同名会冲突）。
+name: release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # goreleaser changelog 与 git tag 操作需要完整历史。
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # v tag 重建：清空旧 release（保留 tag 引用，goreleaser 需要当前 HEAD 在 tag 上）。
+      - name: 清空旧 release（v tag）
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete "${{ github.ref_name }}" --yes || true
+
+      # main：把 latest tag 指向新 commit（force push 不触发本 workflow：
+      # latest 不匹配 branches 也不匹配 v* tags），并清空旧 latest release。
+      - name: 更新 latest tag 并清空旧 release
+        if: github.ref_type == 'branch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -f latest
+          git push origin latest --force
+          gh release delete latest --yes || true
+
+      # v tag：完整发布（构建 + 打包 + 正式 release + changelog）。
+      - name: goreleaser release（v tag）
+        if: github.ref_type == 'tag'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # main：只构建 + 打包（latest 非 semver，需 --skip=validate），
+      # 发布由下一步 gh release 完成（--prerelease，不抢正式 Latest 徽标）。
+      - name: goreleaser 打包（main）
+        if: github.ref_type == 'branch'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean --skip=publish --skip=validate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # main：发布 latest pre-release（tag 已由上面 force push 指向本 commit）。
+      - name: 发布 latest pre-release
+        if: github.ref_type == 'branch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create latest dist/*.tar.gz dist/*.zip dist/checksums.txt \
+            --title "latest" \
+            --notes "main 分支滚动构建（pre-release）" \
+            --prerelease

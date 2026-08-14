@@ -1,0 +1,42 @@
+# 发布 cmd/deepseek-harness-desktop（纯 Go 单命令）到 GitHub Releases。
+# 发布物是 CLI 二进制：无 cgo 依赖，CGO_ENABLED=0 可全平台交叉编译，
+# 因此由 goreleaser 单 runner 构建 + 打包 + 发布。
+#   - v* tag     → goreleaser release（固定版本，正式 release）
+#   - main 分支  → goreleaser 打包 + workflow gh release（tag: latest，pre-release）
+version: 2
+
+project_name: deepseek-harness-desktop
+
+builds:
+  - id: cli
+    main: ./cmd/deepseek-harness-desktop
+    binary: deepseek-harness-desktop
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # main 包没有 version/commit 等变量，显式覆盖默认的 -X 注入，避免链接失败。
+    ldflags:
+      - -s -w
+
+archives:
+  - id: cli
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: 'checksums.txt'
+
+release:
+  github:
+    owner: omdsh-dev
+    name: deepseek-harness-desktop
+  # vX.Y.Z 无预发布后缀 → 正式 release；vX.Y.Z-rc.N 自动为 pre-release。
+  prerelease: auto
