@@ -24,9 +24,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dsh-external/deepseek-harness-desktop/internal/bundle"
-	"github.com/dsh-external/deepseek-harness-desktop/internal/config"
-	"github.com/dsh-external/deepseek-harness-desktop/internal/sea"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/bundle"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/sea"
 )
 
 const usage = `deepseek-harness-desktop — 把 dsh 的 --profile web 与 cordis.patch.yml 打包为独立自定义桌面。

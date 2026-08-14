@@ -1,6 +1,8 @@
-module github.com/dsh-external/deepseek-harness-desktop
+module github.com/omdsh-dev/deepseek-harness-desktop
 
 go 1.26.5
+
+tool github.com/omdsh-dev/deepseek-harness-desktop/cmd/deepseek-harness-desktop
 
 require (
 	github.com/adrg/xdg v0.5.3

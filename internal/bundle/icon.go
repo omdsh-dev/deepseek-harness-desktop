@@ -10,9 +10,9 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/dsh-external/deepseek-harness-desktop/internal/config"
-	"github.com/dsh-external/deepseek-harness-desktop/internal/fsutil"
-	"github.com/dsh-external/deepseek-harness-desktop/internal/tools"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/tools"
 	xdraw "golang.org/x/image/draw"
 )
 

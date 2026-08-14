@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dsh-external/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
 )
 
 // assembleMacOS 组装 macOS 应用 target/<name>/<Name>.app：

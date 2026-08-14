@@ -19,10 +19,10 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/dsh-external/deepseek-harness-desktop/internal/config"
-	"github.com/dsh-external/deepseek-harness-desktop/internal/fsutil"
-	"github.com/dsh-external/deepseek-harness-desktop/internal/profile"
-	"github.com/dsh-external/deepseek-harness-desktop/internal/tools"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/profile"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/tools"
 )
 
 //go:embed all:templates

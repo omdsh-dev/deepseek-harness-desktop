@@ -18,8 +18,8 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/dsh-external/deepseek-harness-desktop/internal/config"
-	"github.com/dsh-external/deepseek-harness-desktop/internal/fsutil"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
 )
 
 // appConfig 与 internal/shell 的 appconfig.json 结构一致（壳读取）。

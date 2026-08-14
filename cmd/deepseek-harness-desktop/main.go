@@ -8,7 +8,7 @@ package main
 import (
 	"os"
 
-	"github.com/dsh-external/deepseek-harness-desktop/internal/cli"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/cli"
 )
 
 func main() {

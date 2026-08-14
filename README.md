@@ -14,14 +14,16 @@ dsh 本体通过 npm 安装到构建目录（`nub install`），根仓库不持�
 清单。
 
 ```sh
-go run ./cmd/deepseek-harness-desktop bundle examples/official     # 打包官方 web profile
-go run ./cmd/deepseek-harness-desktop bundle examples/custom       # 打包自定义工作区
-go run ./cmd/deepseek-harness-desktop dev examples/official        # 开发模式：构建并直接运行
-go run ./cmd/deepseek-harness-desktop ls                           # 列出 examples 工作区
+go tool deepseek-harness-desktop bundle examples/official     # 打包官方 web profile
+go tool deepseek-harness-desktop bundle examples/custom       # 打包自定义工作区
+go tool deepseek-harness-desktop dev examples/official        # 开发模式：构建并直接运行
+go tool deepseek-harness-desktop ls                           # 列出 examples 工作区
 ```
 
-也可以 `go install github.com/dsh-external/deepseek-harness-desktop/cmd/deepseek-harness-desktop@latest`
-后直接使用命令名（仓库根定位见「环境变量」）。
+命令已通过 go.mod 的 `tool` 指令注册（`go 1.24+`）：`go tool
+deepseek-harness-desktop` 自动构建并运行，无需手动 `go build`。也可以
+`go install github.com/omdsh-dev/deepseek-harness-desktop/cmd/deepseek-harness-desktop@latest`
+安装到 PATH 后直接使用命令名（仓库根定位见「环境变量」）。
 
 macOS 产物：`target/<name>/<Name>.app`；Linux：`target/<name>/linux/<Name>/`
 （含 `tar.gz`）；Windows：`target/<name>/windows/<Name>/`（含 `zip`）。

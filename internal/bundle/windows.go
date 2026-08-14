@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dsh-external/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
 )
 
 // assembleWindows 组装 Windows 应用 target/<name>/windows/<Name>/：

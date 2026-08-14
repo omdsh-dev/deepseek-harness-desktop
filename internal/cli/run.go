@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/dsh-external/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
 )
 
 // buildShell 用仓库根的 Go 模块构建壳二进制（./internal/shell），输出到

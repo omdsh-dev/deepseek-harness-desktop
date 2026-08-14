@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/dsh-external/deepseek-harness-desktop/internal/shell/server"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/shell/server"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 

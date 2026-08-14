@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dsh-external/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
 )
 
 // assembleLinux 组装 Linux 应用 target/<name>/linux/<Name>/：
