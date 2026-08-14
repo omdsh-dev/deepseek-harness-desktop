@@ -47,10 +47,15 @@ dsh 核心 peer 依赖完整）→ SEA 打包（内嵌 node 的 `dsh --profile w
    安装）。安装器定位真实 pnpm（`internal/pm`：`mise which pnpm` 优先、
    拒绝 nub shim、缺失明确报错）。
 2. **SEA 打包**（`internal/sea`）：工作区 node_modules 闭包解引用复制到
-   `target/<name>/sea/node_modules`，复制 `@deepseek-ai/dsh` 的 `config/`
-   与 `package.json`，生成 `sea-entry.mjs`（dsh CLI 入口）与
-   `tsdown.config.mjs`，调用工具链 tsdown（`target/tools`，pnpm 安装）产出
-   `sea/bin/dsh`。bundle 插件包（含依赖闭包）全部一并打包。
+   `target/<name>/sea/node_modules`，向闭包写入 CJS 桥 `dsh-bridge`，复制
+   `@deepseek-ai/dsh` 的 `config/` 与 `package.json`，生成薄入口
+   `sea-entry.mjs`（仅 node: builtin 导入 + `require("dsh-bridge")`）与
+   `tsdown.config.mjs`（`deps.onlyBundle: /^$/`，不内联任何依赖），调用
+   工具链 tsdown（`target/tools`，pnpm 安装）产出 `sea/bin/dsh`。运行期
+   入口经 `createRequire` 从可执行文件旁的闭包加载 dsh-bridge，其
+   `import()` 走正常 Node ESM loader 加载 dsh CLI 与全部依赖——依赖
+   闭包、原生模块（Node-API addon）与顶层 await 均不经过 SEA blob
+   （blob 内模块只能加载 node: builtin），与 dev 的模块解析行为一致。
 3. **壳构建**：`go build .`（Wails v3；壳源码由模块根 package main
    （`internal/shell/`）与 `server/` 包组成）。构建输入（壳源码与精简
    go.mod）由 `internal/cli/shellsrc` 以 go:embed 内嵌在 CLI 二进制中，

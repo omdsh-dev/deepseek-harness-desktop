@@ -1,5 +1,8 @@
-// dsh SEA 打包入口（由 deepseek-harness-desktop CLI 生成）。
-// 直接启动 dsh CLI：lib/bin.js 及其静态依赖在构建期由 bundler 内联进
-// SEA blob。不集成 tsx —— 正式打包产物不启用 dsh 的源码模式路径（需要
-// tsx transform hook 的未打包分支）。
-await import('./node_modules/@deepseek-ai/dsh/lib/bin.js')
+// dsh SEA 薄入口（由 deepseek-harness-desktop CLI 生成）。
+// blob 内只保留 node: builtin 导入；dsh CLI 与全部依赖经闭包内的
+// dsh-bridge（CJS 桥，sea.Build 生成）从可执行文件旁的外部 node_modules
+// 解析加载：桥的 import() 走正常 Node ESM loader，原生模块、顶层 await
+// 与运行时资源均随闭包外置，无需 bundler 内联。
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+require("dsh-bridge");

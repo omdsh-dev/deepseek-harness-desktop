@@ -140,7 +140,10 @@ func assembleLayout(in Inputs, appRoot string) (string, error) {
 	}
 	seedIgnored := func(rel string, isDir bool) bool {
 		if rel == "node_modules" || strings.HasPrefix(rel, "node_modules/") {
-			return false
+			// node_modules 例外（gitignore 不忽略），但过滤与当前平台
+			// 无关的原生二进制（prebuilds 全平台目录、平台变体包）。
+			inner := strings.TrimPrefix(rel, "node_modules/")
+			return inner != "" && fsutil.NativeSkip(inner, isDir)
 		}
 		return gi.Ignored(rel, isDir)
 	}
