@@ -51,7 +51,15 @@ dsh 核心 peer 依赖完整）→ SEA 打包（内嵌 node 的 `dsh --profile w
    与 `package.json`，生成 `sea-entry.mjs`（dsh CLI 入口）与
    `tsdown.config.mjs`，调用工具链 tsdown（`target/tools`，pnpm 安装）产出
    `sea/bin/dsh`。bundle 插件包（含依赖闭包）全部一并打包。
-3. **壳构建**：`go build ./internal/shell`（Wails v3）。
+3. **壳构建**：`go build .`（Wails v3；壳源码由模块根 package main
+   （`internal/shell/`）与 `server/` 包组成）。构建输入（壳源码与精简
+   go.mod）由 `internal/cli/shellsrc` 以 go:embed 内嵌在 CLI 二进制中，
+   运行时解出到 `target/<name>/.shell-src/`（壳专用模块根）再构建——
+   CLI 不依赖仓库 checkout，`go install` 后也能 bundle（脱离源码树）。
+   副本由 `scripts/sync-shellsrc.sh`（`just sync-shell-src`，goreleaser
+   发布前 before hook 执行同一脚本）从仓库同步，并在 `_src` 内
+   `go mod tidy` 把 go.mod 精简到只含壳依赖（去掉 tool 指令与 CLI 专用
+   依赖）；改壳源码或依赖后必须重新同步，`go test` 会校验副本一致性。
 4. **平台组装**（`internal/bundle`）：macOS `.app`（Info.plist、icns）、
    Linux 目录 + `tar.gz`（hicolor 图标集）、Windows 目录 + `zip`（ico），
    写入壳同目录 `appconfig.json` 与 DSH_HOME 种子 `dsh-home/`
@@ -65,7 +73,8 @@ PNG 源直接解码，各平台尺寸由 `golang.org/x/image/draw` 缩放；macO
 ## 环境变量
 
 - 构建期：`DSH_DESKTOP_ROOT`（仓库根；`go install` 到 PATH 后使用，
-  仓库内 `go tool` 时自动定位）
+  仓库内 `go tool` 时自动定位）。壳构建不依赖它（源码由 CLI 内嵌），
+  仅用于把 `examples/<name>` 相对路径解析到仓库内工作区
 - 运行时（壳）：`DSH_APP_DSH_HOME`（显式覆盖 DSH_HOME，开发/测试用）、
   `DSH_APP_WORKSPACE`（工作目录，默认用户主目录）、`DSH_APP_PORT`
   （后端端口，默认 `0` 由 OS 分配）

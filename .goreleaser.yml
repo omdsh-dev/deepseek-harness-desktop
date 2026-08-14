@@ -6,6 +6,13 @@ version: 2
 
 project_name: deepseek-harness-desktop
 
+# 发布前把壳源码（internal/shell 与 server/）与精简 go.mod 同步到 CLI 的
+# embed 副本（internal/cli/shellsrc/_src，见 scripts/sync-shellsrc.sh）：
+# CLI 二进制在运行时用它解出并 go build 壳，必须包含当前源码与依赖。
+before:
+  hooks:
+    - bash scripts/sync-shellsrc.sh
+
 builds:
   - id: cli
     main: ./cmd/deepseek-harness-desktop

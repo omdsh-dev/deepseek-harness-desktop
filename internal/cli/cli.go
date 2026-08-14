@@ -197,7 +197,7 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	if err := checkPlatform(platform); err != nil {
 		return "", err
 	}
-	root, ws, cfg, err := loadWorkspace(ws)
+	_, ws, cfg, err := loadWorkspace(ws)
 	if err != nil {
 		return "", err
 	}
@@ -243,8 +243,8 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	}
 	fmt.Printf("==> SEA 后端: %s\n", seaExe)
 
-	// 2) 壳二进制。
-	shellBin, err := buildShell(root, ws, cfg)
+	// 2) 壳二进制（构建输入由 shellsrc 内嵌，脱离源码树）。
+	shellBin, err := buildShell(ws, cfg)
 	if err != nil {
 		return "", err
 	}

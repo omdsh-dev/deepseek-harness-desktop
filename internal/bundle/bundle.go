@@ -24,7 +24,7 @@ import (
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/gitignore"
 )
 
-// appConfig 与 internal/shell 的 appconfig.json 结构一致（壳读取）。
+// appConfig 与壳的 appconfig.json 结构一致（壳读取）。
 type appConfig struct {
 	Name    string `json:"name"`
 	ID      string `json:"id"`
@@ -62,7 +62,7 @@ type Inputs struct {
 	Workspace string // 工作区（target/ 产物根与图标源）
 	Cfg       *config.Config
 	SeaExe    string // SEA 可执行（sea/bin/dsh）
-	ShellBin  string // 壳二进制（go build ./internal/shell 的产物）
+	ShellBin  string // 壳二进制（go build 壳源码的产物）
 }
 
 // AppRoot 返回平台应用的产物根目录（位于工作区 target/ 下）。
