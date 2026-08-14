@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"image"
 	"image/png"
@@ -15,16 +16,8 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// iconMJS 用工具链里的 sharp（libvips + librsvg）把 SVG 渲染为 1024x1024
-// 白底 PNG（currentColor 由 librsvg 按黑色解析）。resvg 无法解析部分 SVG
-// 特性，sharp 的渲染路径与旧构建脚本一致。
-const iconMJS = `import sharp from 'sharp'
-const [src, dst] = process.argv.slice(2)
-await sharp(src, { density: 1440 })
-  .resize(1024, 1024, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
-  .png()
-  .toFile(dst)
-`
+//go:embed templates/icon.mjs
+var iconMJS string
 
 // renderIcon1024 把工作区图标的 SVG 渲染为 1024x1024 PNG（工具链 sharp）。
 // 返回 PNG 文件路径（target/<name>/icon-1024.png）。
@@ -37,6 +30,7 @@ func renderIcon1024(in Inputs) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// 渲染脚本模板以 go:embed 内嵌（templates/icon.mjs）。
 	script := filepath.Join(toolsDir, "icon.mjs")
 	if err := os.WriteFile(script, []byte(iconMJS), 0o644); err != nil {
 		return "", err

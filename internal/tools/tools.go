@@ -3,47 +3,24 @@
 // 根仓库是纯 Go，不提交任何 npm 清单；构建工具（tsdown 打包 SEA、sharp
 // 渲染图标）按需安装到 target/tools（nub install，构建目录本地 store），
 // 与工作区解耦。target/ 统一承载全部产物，无其他临时目录。
+//
+// 工具链的工程文件模板（package.json / .npmrc / pnpm-workspace.yaml）以
+// go:embed 内嵌在 templates/ 下。
 package tools
 
 import (
+	"embed"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 )
 
+//go:embed all:templates
+var templates embed.FS
+
 // DirName 是工具链目录名（target/ 下）。
 const DirName = "tools"
-
-// 工具链依赖：tsdown 打包 SEA；sharp 渲染图标。
-const packageJSON = `{
-  "name": "dsh-desktop-tools",
-  "private": true,
-  "devDependencies": {
-    "tsdown": "^0.22.2",
-    "sharp": "^0.35.3"
-  },
-  "allowBuilds": {
-    "esbuild": true,
-    "sharp": true
-  }
-}
-`
-
-const npmrc = `@deepseek-ai:registry=https://registry.npmjs.org/
-minimumReleaseAgeStrict=false
-minimumReleaseAgeExclude=@deepseek-ai/*
-store-dir=.store
-virtualStoreDir=.store/gvs
-globalVirtualStoreDir=.store/gvs
-`
-
-const pnpmWorkspace = `packages:
-  - .
-
-nodeLinker: hoisted
-autoInstallPeers: false
-`
 
 // Dir 返回工具链目录。
 func Dir(root string) string {
@@ -61,13 +38,20 @@ func Ensure(root string) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("mkdir tools %s: %w", dir, err)
 	}
-	for name, content := range map[string]string{
-		"package.json":        packageJSON,
-		".npmrc":              npmrc,
-		"pnpm-workspace.yaml": pnpmWorkspace,
-	} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-			return "", fmt.Errorf("write %s: %w", name, err)
+	entries, err := templates.ReadDir("templates")
+	if err != nil {
+		return "", fmt.Errorf("read embedded templates: %w", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		data, err := templates.ReadFile("templates/" + e.Name())
+		if err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(filepath.Join(dir, e.Name()), data, 0o644); err != nil {
+			return "", fmt.Errorf("write %s: %w", e.Name(), err)
 		}
 	}
 	cmd := exec.Command("nub", "install")

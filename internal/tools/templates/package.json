@@ -1,0 +1,12 @@
+{
+  "name": "dsh-desktop-tools",
+  "private": true,
+  "devDependencies": {
+    "tsdown": "^0.22.2",
+    "sharp": "^0.35.3"
+  },
+  "allowBuilds": {
+    "esbuild": true,
+    "sharp": true
+  }
+}

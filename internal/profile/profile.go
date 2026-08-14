@@ -16,6 +16,7 @@
 package profile
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -25,6 +26,9 @@ import (
 	"github.com/dsh-external/deepseek-harness-desktop/internal/config"
 	"github.com/dsh-external/deepseek-harness-desktop/internal/fsutil"
 )
+
+//go:embed all:templates
+var templates embed.FS
 
 // 需要放行构建脚本的包（原生模块，nub 默认忽略构建脚本）。
 var allowBuilds = []string{
@@ -36,31 +40,11 @@ var allowBuilds = []string{
 	"protobufjs",
 }
 
-// npmrc 内容：registry 覆盖（@deepseek-ai 官方 npm + @morlay GitHub npm）
-// + minimumReleaseAge 豁免（@deepseek-ai 新发布包立即可用）+ pnpm 兼容
-// 布局（shamefully-hoist，扁平闭包）+ 构建目录本地 store（构建完全自包含）。
-// @morlay scope 发布在 GitHub npm registry（npm.pkg.github.com），认证
-// token 由用户 nub 配置提供（//npm.pkg.github.com/:@morlay:_authToken）。
-const npmrc = `@deepseek-ai:registry=https://registry.npmjs.org/
-@morlay:registry=https://npm.pkg.github.com/
-minimumReleaseAgeStrict=false
-minimumReleaseAgeExclude=@deepseek-ai/*
-shamefully-hoist=true
-store-dir=.store
-virtualStoreDir=.store/gvs
-globalVirtualStoreDir=.store/gvs
-`
-
-// pnpm workspace：nodeLinker hoisted（扁平闭包，供 SEA 打包直接复制）；
-// autoInstallPeers=true —— dsh-app-boot 等核心包把运行时必需的依赖
-// （cordis-plugin-group、dsh-invariants 等）声明为 peerDependencies，
-// 闭包缺它们时 SEA 打包会把裸包名 import 留在 blob 里，启动即崩。
-const pnpmWorkspace = `packages:
-  - .
-
-nodeLinker: hoisted
-autoInstallPeers: true
-`
+// 工程文件模板（.npmrc / pnpm-workspace.yaml）以 go:embed 内嵌在
+// templates/ 下：.npmrc 含 registry 映射（@deepseek-ai 官方 npm +
+// @morlay GitHub npm）与构建目录本地 store；pnpm-workspace.yaml 的
+// autoInstallPeers=true 保证 dsh 核心 peer 依赖（cordis-plugin-group 等）
+// 进闭包（缺它们时 SEA 打包会把裸包名 import 留在 blob 里，启动即崩）。
 
 // ProfileDir 返回构建出的 profile 目录（target/<name>/dsh-home/profiles/web）。
 func ProfileDir(root string, cfg *config.Config) string {
@@ -114,13 +98,21 @@ func Assemble(root, ws string, cfg *config.Config) error {
 		return fmt.Errorf("write package.json: %w", err)
 	}
 
-	// 工程文件与内容。
-	for name, content := range map[string]string{
-		".npmrc":              npmrc,
-		"pnpm-workspace.yaml": pnpmWorkspace,
-	} {
-		if err := os.WriteFile(filepath.Join(profileDir, name), []byte(content), 0o644); err != nil {
-			return fmt.Errorf("write %s: %w", name, err)
+	// 工程文件（templates/ 内嵌）。
+	entries, err := templates.ReadDir("templates")
+	if err != nil {
+		return fmt.Errorf("read embedded templates: %w", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		data, err := templates.ReadFile("templates/" + e.Name())
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(profileDir, e.Name()), data, 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", e.Name(), err)
 		}
 	}
 	if err := fsutil.CopyFile(filepath.Join(ws, "cordis.patch.yml"), filepath.Join(profileDir, "cordis.patch.yml")); err != nil {

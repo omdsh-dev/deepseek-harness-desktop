@@ -13,6 +13,7 @@
 package sea
 
 import (
+	"embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,6 +25,9 @@ import (
 	"github.com/dsh-external/deepseek-harness-desktop/internal/tools"
 )
 
+//go:embed all:templates
+var templates embed.FS
+
 // 复制时排除的 node_modules 簿记条目（非包实体）。
 var skipEntries = map[string]bool{
 	".store":        true,
@@ -31,39 +35,11 @@ var skipEntries = map[string]bool{
 	".modules.yaml": true,
 }
 
-// entryMJS 是 SEA 打包入口：直接启动 dsh CLI（lib/bin.js 及其静态依赖在
-// 构建期由 bundler 内联进 SEA blob）。不集成 tsx —— 正式打包产物不启用
-// dsh 的源码模式路径（需要 tsx transform hook 的未打包分支）。
-const entryMJS = `// dsh SEA 打包入口（由 deepseek-harness-desktop CLI 生成）。
-await import('./node_modules/@deepseek-ai/dsh/lib/bin.js')
-`
-
-// tsdownConfigMJS 是 SEA 打包配置：内联 entry 及其静态依赖，用 Node 的
-// --build-sea 生成单文件可执行。原生模块与运行时资源（config、frontend
-// dist、插件闭包 node_modules）外置在可执行文件旁。闭包即本目录
-// node_modules（扁平布局），bundler 直接从本地解析，无需 alias 映射。
-const tsdownConfigMJS = `// dsh SEA 打包配置（由 deepseek-harness-desktop CLI 生成）。
-export default {
-  entry: ['sea-entry.mjs'],
-  format: ['esm'],
-  platform: 'node',
-  target: 'es2024',
-  dts: false,
-  clean: true,
-  // 普通 bundle（无用途的中间产物）也收拢到 dist/ 下，避免污染目录根。
-  outDir: 'dist',
-  deps: { alwaysBundle: /./ },
-  exe: {
-    fileName: 'dsh',
-    // 可执行文件必须落在深层目录：代码里 new URL('../config/…', import.meta.url)
-    // 从 exe 所在目录的上一级解析运行时资源。
-    outDir: 'bin',
-    seaConfig: {
-      execArgv: ['--expose-internals'],
-    },
-  },
-}
-`
+// 打包模板（sea-entry.mjs / tsdown.config.mjs）以 go:embed 内嵌在
+// templates/ 下。entry 直接启动 dsh CLI（不集成 tsx —— 正式打包产物不
+// 启用 dsh 的源码模式路径）；tsdown 配置内联 entry 及其静态依赖，用
+// Node 的 --build-sea 生成单文件可执行，原生模块与运行时资源外置在
+// 可执行文件旁。
 
 // SeaExe 返回 SEA 可执行文件路径。
 func SeaExe(root string, cfg *config.Config) string {
@@ -108,12 +84,22 @@ func Build(root, ws string, cfg *config.Config, skipInstall bool) (string, error
 		return "", fmt.Errorf("copy package.json: %w", err)
 	}
 
-	// 3) 生成打包入口与配置。
-	if err := os.WriteFile(filepath.Join(staging, "sea-entry.mjs"), []byte(entryMJS), 0o644); err != nil {
-		return "", fmt.Errorf("write sea-entry.mjs: %w", err)
+	// 3) 生成打包入口与配置（templates/ 内嵌）。
+	entries, err := templates.ReadDir("templates")
+	if err != nil {
+		return "", fmt.Errorf("read embedded templates: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(staging, "tsdown.config.mjs"), []byte(tsdownConfigMJS), 0o644); err != nil {
-		return "", fmt.Errorf("write tsdown.config.mjs: %w", err)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		data, err := templates.ReadFile("templates/" + e.Name())
+		if err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(filepath.Join(staging, e.Name()), data, 0o644); err != nil {
+			return "", fmt.Errorf("write %s: %w", e.Name(), err)
+		}
 	}
 
 	// 4) 构建。
