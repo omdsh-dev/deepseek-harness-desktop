@@ -34,23 +34,22 @@ var seedSkipDirs = map[string]bool{
 //	                               种子存在，从种子补齐缺失文件；
 //	env                          — 返回空串，不设置 DSH_HOME（继承环境）。
 //
-// 返回空串表示调用方不设置 DSH_HOME。
+// dev 模式会把 profiles/web 创建为指向工作区的符号链接（运行时直连
+// 工作区）；打包 app 必须独立于工作区——检测到 symlink 时移除并复制
+// 实体种子（见 ensureSeed）。返回空串表示调用方不设置 DSH_HOME。
 func resolveDSHHome(cfg appConfig, exeDir string) (string, error) {
 	if v := os.Getenv("DSH_APP_DSH_HOME"); v != "" {
 		return v, nil
 	}
 	seed := filepath.Join(exeDir, "..", seedDirName)
-	hasSeed := dirExists(seed)
 
 	switch cfg.DSHHome {
 	case "env":
 		return "", nil
 	case "xdg":
 		dst := filepath.Join(xdg.DataHome, cfg.Name)
-		if hasSeed && !dirExists(filepath.Join(dst, "profiles", cfg.Profile)) {
-			if err := copySeed(seed, dst); err != nil {
-				return "", fmt.Errorf("首次启动拷贝 dsh-home 种子到 %s: %w", dst, err)
-			}
+		if err := ensureSeed(seed, dst, cfg.Profile); err != nil {
+			return "", err
 		}
 		return dst, nil
 	default:
@@ -58,13 +57,35 @@ func resolveDSHHome(cfg appConfig, exeDir string) (string, error) {
 		if !filepath.IsAbs(dst) {
 			return "", fmt.Errorf("dshHome 必须是 xdg / env / 绝对路径，得到 %q", cfg.DSHHome)
 		}
-		if hasSeed && !dirExists(filepath.Join(dst, "profiles", cfg.Profile)) {
-			if err := copySeed(seed, dst); err != nil {
-				return "", fmt.Errorf("补齐 dsh-home 种子到 %s: %w", dst, err)
-			}
+		if err := ensureSeed(seed, dst, cfg.Profile); err != nil {
+			return "", err
 		}
 		return dst, nil
 	}
+}
+
+// ensureSeed 确保目标 DSH_HOME 的 profile 是实体种子副本：dev 模式留下
+// 的 profiles/web 符号链接（指向工作区）不是有效种子——移除后从 bundle
+// 内种子复制实体，使 app 独立于工作区（工作区 node_modules 缺失/变更
+// 不影响 app 启动）。用户数据（sessions/storages 等）位于 home 根，
+// 不受 profile 替换影响。
+func ensureSeed(seed, dst, profile string) error {
+	if !dirExists(seed) {
+		return nil
+	}
+	profileDir := filepath.Join(dst, "profiles", profile)
+	if info, err := os.Lstat(profileDir); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(profileDir); err != nil {
+			return fmt.Errorf("移除 dev symlink %s: %w", profileDir, err)
+		}
+	}
+	if dirExists(profileDir) {
+		return nil
+	}
+	if err := copySeed(seed, dst); err != nil {
+		return fmt.Errorf("首次启动拷贝 dsh-home 种子到 %s: %w", dst, err)
+	}
+	return nil
 }
 
 func dirExists(path string) bool {

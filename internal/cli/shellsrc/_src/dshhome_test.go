@@ -121,3 +121,54 @@ func TestResolveDSHHomeBadPath(t *testing.T) {
 		t.Fatal("相对路径应报错")
 	}
 }
+
+// TestEnsureSeedReplacesDevSymlink：dev 模式留下的 profiles/web 符号链接
+// （指向工作区）不是有效种子——app 启动应移除它并复制实体种子，使 app
+// 独立于工作区（工作区缺失不影响 app）。
+func TestEnsureSeedReplacesDevSymlink(t *testing.T) {
+	seedRoot := t.TempDir()
+	seed := filepath.Join(seedRoot, "dsh-home")
+	profileDir := filepath.Join(seed, "profiles", "web")
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profileDir, "package.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 模拟 dev 留下的 symlink：profiles/web → 外部工作区。
+	dst := filepath.Join(t.TempDir(), "home")
+	ws := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(filepath.Join(dst, "profiles"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(ws, filepath.Join(dst, "profiles", "web")); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := defaultAppConfig()
+	cfg.Profile = "web"
+	cfg.DSHHome = dst
+	got, err := resolveDSHHome(cfg, filepath.Join(seedRoot, "bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != dst {
+		t.Fatalf("应返回固定路径 %q，得到 %q", dst, got)
+	}
+	// symlink 被实体目录替换，且不再指向工作区。
+	link := filepath.Join(dst, "profiles", "web")
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("profile 应存在: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatal("dev symlink 应被移除")
+	}
+	if _, err := os.Stat(filepath.Join(link, "package.json")); err != nil {
+		t.Fatalf("应复制实体种子: %v", err)
+	}
+}
