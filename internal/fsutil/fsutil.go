@@ -2,10 +2,13 @@
 package fsutil
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -139,4 +142,50 @@ func RemoveAll(path string) error {
 		time.Sleep(100 * time.Millisecond)
 	}
 	return err
+}
+
+// DirHash 计算目录内容的稳定哈希：按相对路径排序后对每个文件
+// sha256(相对路径 + 文件内容) 聚合。skip 里的名字（文件或目录，任意层级）
+// 排除。用于构建缓存判断（输入无变化则跳过重新打包）。
+func DirHash(root string, skip map[string]bool) (string, error) {
+	h := sha256.New()
+	var paths []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if skip[d.Name()] {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		paths = append(paths, rel)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(paths)
+	for _, rel := range paths {
+		f, err := os.Open(filepath.Join(root, rel))
+		if err != nil {
+			return "", err
+		}
+		io.WriteString(h, rel)
+		h.Write([]byte{0})
+		if _, err := io.Copy(h, f); err != nil {
+			f.Close()
+			return "", err
+		}
+		f.Close()
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

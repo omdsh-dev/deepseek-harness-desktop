@@ -16,6 +16,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/bundle"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/profile"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/sea"
 )
@@ -32,11 +34,15 @@ import (
 const usage = `deepseek-harness-desktop — 把 dsh 的 --profile web 与 cordis.patch.yml 打包为独立自定义桌面。
 
 用法（go install 后任意目录，或仓库内 go tool）：
-  deepseek-harness-desktop dev <workspace>                  开发模式：构建并直接运行
-  deepseek-harness-desktop bundle --platform=os/arch <ws>   打包平台应用（默认本机平台）
+  deepseek-harness-desktop dev <workspace>                  基于工作区起 dsh web 并打开浏览器
+  deepseek-harness-desktop bundle [--platform=os/arch] [--force] [--install] <workspace>
 
 选项：
-  --skip-install   跳过依赖安装（使用已有安装）
+  --platform=os/arch   声明目标平台（默认本机；SEA/壳不支持交叉编译）
+  --force              忽略构建缓存，全新打包（默认基于工作区 dir hash 增量）
+  --install            打包后安装到当前平台（macOS /Applications、
+                       Linux XDG data + .desktop、Windows %LOCALAPPDATA%\Programs）
+  --skip-install       跳过依赖安装（使用已有安装）
 
 工作区是拍平的 desktop 定义（见 examples/official、examples/custom）：
   package.json       全部配置：name/version/dependencies（npm 语义）、
@@ -53,6 +59,8 @@ DSH_HOME（XDG_DATA_HOME/<name>/dsh-home）中生成。
 // Run 执行 CLI，返回进程退出码。
 func Run(args []string) int {
 	skipInstall := false
+	force := false
+	install := false
 	platform := ""
 	rest := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
@@ -60,6 +68,10 @@ func Run(args []string) int {
 		switch {
 		case a == "--skip-install":
 			skipInstall = true
+		case a == "--force":
+			force = true
+		case a == "--install":
+			install = true
 		case a == "--platform":
 			if i+1 >= len(args) {
 				fmt.Fprintln(os.Stderr, "--platform 需要参数（os/arch，如 macos/arm64）")
@@ -97,7 +109,7 @@ func Run(args []string) int {
 			fmt.Fprintln(os.Stderr, "用法：deepseek-harness-desktop bundle [--platform=os/arch] <workspace>")
 			return 2
 		}
-		if _, err := Bundle(rest[1], platform, skipInstall); err != nil {
+		if _, err := Bundle(rest[1], platform, force, install, skipInstall); err != nil {
 			fmt.Fprintf(os.Stderr, "bundle 失败：%v\n", err)
 			return 1
 		}
@@ -123,15 +135,43 @@ func checkPlatform(platform string) error {
 	return nil
 }
 
-// Bundle 执行一次完整打包（profile 安装 → SEA → 壳 → 平台组装），返回
-// 产物路径。
-func Bundle(ws, platform string, skipInstall bool) (string, error) {
+// Bundle 执行一次完整打包（依赖闭包 → SEA → 壳 → 平台组装），返回产物
+// 路径。
+//
+// 默认基于构建缓存：工作区内容（package.json / cordis.patch.yml /
+// pnpm-workspace.yaml / .npmrc / 图标 / pnpm-lock.yaml 等）与上次打包一致
+// 时直接复用已有产物；--force 忽略缓存全新打包。
+func Bundle(ws, platform string, force, install, skipInstall bool) (string, error) {
 	if err := checkPlatform(platform); err != nil {
 		return "", err
 	}
 	root, ws, cfg, err := loadWorkspace(ws)
 	if err != nil {
 		return "", err
+	}
+
+	// 构建缓存：工作区 dir hash + 平台。
+	statePath := filepath.Join(config.BuildDir(root, cfg), ".build-state.json")
+	if !force {
+		wsHash, err := fsutil.DirHash(ws, hashSkip)
+		if err != nil {
+			return "", fmt.Errorf("计算工作区 hash: %w", err)
+		}
+		if state, err := os.ReadFile(statePath); err == nil {
+			var st buildState
+			if json.Unmarshal(state, &st) == nil && st.Hash == wsHash && st.Platform == platformName() {
+				appRoot := bundle.AppRoot(root, cfg)
+				if dirExists(appRoot) {
+					fmt.Printf("==> 无变化（%s），复用 %s\n", st.Hash[:12], appRoot)
+					if install {
+						if err := bundle.Install(appRoot, cfg); err != nil {
+							return "", err
+						}
+					}
+					return appRoot, nil
+				}
+			}
+		}
 	}
 
 	fmt.Printf("==> 打包 %s（%s %s）\n", cfg.Name, config.ProfileName, cfg.Version)
@@ -161,7 +201,46 @@ func Bundle(ws, platform string, skipInstall bool) (string, error) {
 		return "", err
 	}
 	fmt.Printf("==> 产物: %s\n", appRoot)
+
+	// 记录构建状态。
+	wsHash, err := fsutil.DirHash(ws, hashSkip)
+	if err == nil {
+		st := buildState{Hash: wsHash, Platform: platformName()}
+		if raw, err := json.Marshal(st); err == nil {
+			if err := os.MkdirAll(config.BuildDir(root, cfg), 0o755); err == nil {
+				_ = os.WriteFile(statePath, raw, 0o644)
+			}
+		}
+	}
+
+	// 4) 安装（可选）。
+	if install {
+		if err := bundle.Install(appRoot, cfg); err != nil {
+			return "", err
+		}
+	}
 	return appRoot, nil
+}
+
+// buildState 是构建缓存记录。
+type buildState struct {
+	Hash     string `json:"hash"`
+	Platform string `json:"platform"`
+}
+
+// hashSkip 是工作区 dir hash 排除的名字（安装簿记与运行时生成物；
+// pnpm-lock.yaml 锁定依赖闭包，必须参与 hash）。
+var hashSkip = map[string]bool{
+	".git":         true,
+	"node_modules": true,
+	".store":       true,
+	".DS_Store":    true,
+	"cordis.yml":   true,
+}
+
+// platformName 返回当前平台的 canonical 名（os/arch）。
+func platformName() string {
+	return runtime.GOOS + "/" + runtime.GOARCH
 }
 
 // Dev 基于工作区直接起一个 dsh web 并打开浏览器页面（不组装桌面应用，
@@ -251,4 +330,10 @@ func repoRoot() (string, error) {
 		return "", fmt.Errorf("无法定位仓库根；设置 DSH_DESKTOP_ROOT 或从仓库根运行")
 	}
 	return filepath.Dir(filepath.Dir(filepath.Dir(file))), nil
+}
+
+// dirExists 报告路径是否为已存在的目录。
+func dirExists(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && info.IsDir()
 }

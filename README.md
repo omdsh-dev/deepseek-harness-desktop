@@ -15,12 +15,16 @@ go install github.com/omdsh-dev/deepseek-harness-desktop/cmd/deepseek-harness-de
 
 ```sh
 deepseek-harness-desktop dev examples/custom        # 基于工作区起 dsh web 并打开浏览器
-deepseek-harness-desktop bundle examples/custom     # 打包当前平台的应用
-deepseek-harness-desktop bundle --platform=macos/arm64 examples/custom   # 显式声明平台
+deepseek-harness-desktop bundle examples/custom     # 打包当前平台的应用（基于工作区 hash 增量）
+deepseek-harness-desktop bundle --force examples/custom      # 忽略缓存，全新打包
+deepseek-harness-desktop bundle --install examples/custom    # 打包并安装到当前平台
 ```
 
 - `dev <workspace>` — 基于工作区直接起 `dsh web` 并打开浏览器页面（Ctrl+C 退出）
-- `bundle <workspace>` — 打包为平台应用，产物在 `target/<name>/` 下
+- `bundle <workspace>` — 打包为平台应用，产物在 `target/<name>/` 下。默认基于
+  工作区内容 hash 增量：输入无变化时直接复用上次产物；`--force` 忽略缓存
+  全新打包；`--install` 打包后安装（macOS `/Applications`、Linux XDG data +
+  `.desktop`、Windows `%LOCALAPPDATA%\Programs`）
 
 工作区是拍平的 desktop 定义：`package.json`（name/version/dependencies +
 `dsh.profile.bundles` + `dsh.desktop`）+ `cordis.patch.yml`（patch 层）+

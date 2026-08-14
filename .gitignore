@@ -9,3 +9,4 @@ cordis.yml
 
 mise.*.toml
 nub.lock
+pnpm-lock.yaml
