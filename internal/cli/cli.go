@@ -210,10 +210,10 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	}
 	hashIgnored := gi.Ignored
 
-	// 构建缓存：工作区 dir hash + 平台。产物位于工作区 target/ 下。
+	// 构建缓存：工作区 dir hash + 闭包指纹 + 平台。产物位于工作区 target/ 下。
 	statePath := filepath.Join(config.BuildDir(ws, cfg), ".build-state.json")
 	if !force {
-		wsHash, err := fsutil.DirHash(ws, hashSkip, hashIgnored)
+		wsHash, err := workspaceHash(ws, hashSkip, hashIgnored)
 		if err != nil {
 			return "", fmt.Errorf("计算工作区 hash: %w", err)
 		}
@@ -262,7 +262,7 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	fmt.Printf("==> 产物: %s\n", appRoot)
 
 	// 记录构建状态。
-	wsHash, err := fsutil.DirHash(ws, hashSkip, hashIgnored)
+	wsHash, err := workspaceHash(ws, hashSkip, hashIgnored)
 	if err == nil {
 		st := buildState{Hash: wsHash, Platform: platformName()}
 		if raw, err := json.Marshal(st); err == nil {
@@ -287,9 +287,27 @@ type buildState struct {
 	Platform string `json:"platform"`
 }
 
+// workspaceHash 计算工作区构建缓存指纹：工程文件 dir hash + 闭包顶层包
+// 清单指纹。node_modules 不在 dir hash 内（体积与稳定性），pnpm install
+// 导致的闭包变化（增删/升级包）单独纳入指纹，避免复用与当前闭包不一致
+// 的旧产物——SEA 闭包缺包时 tsdown 把解析不到的依赖留作裸导入，产物
+// 启动即崩（ERR_UNKNOWN_BUILTIN_MODULE）。
+func workspaceHash(ws string, hashSkip map[string]bool, hashIgnored func(rel string, isDir bool) bool) (string, error) {
+	h, err := fsutil.DirHash(ws, hashSkip, hashIgnored)
+	if err != nil {
+		return "", err
+	}
+	fp, err := profile.ClosureFingerprint(ws)
+	if err != nil {
+		return "", err
+	}
+	return h + ":" + fp, nil
+}
+
 // hashSkip 是工作区 dir hash 排除的名字（安装簿记与运行时生成物；
 // pnpm-lock.yaml 锁定依赖闭包，必须参与 hash）。构建产物（如 target/）
 // 不在此列——由工作区 .gitignore 表达，hash 遵循它排除（见 Bundle）。
+// node_modules 由 workspaceHash 以闭包指纹单独纳入。
 var hashSkip = map[string]bool{
 	".git":         true,
 	"node_modules": true,

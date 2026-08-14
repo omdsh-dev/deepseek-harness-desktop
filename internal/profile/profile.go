@@ -10,11 +10,16 @@
 package profile
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/pm"
 )
@@ -105,4 +110,62 @@ func Version(profileDir string) (string, error) {
 		return "", err
 	}
 	return m.Version, nil
+}
+
+// ClosureFingerprint 返回闭包顶层包清单的稳定指纹（包名+版本排序后
+// 聚合 sha256）。nodeLinker=hoisted 下顶层即完整闭包，pnpm install 增删
+// 或升级包都会改变指纹。node_modules 缺失时返回空指纹（调用方按未安装
+// 处理，不误伤工程文件 hash）。
+func ClosureFingerprint(profileDir string) (string, error) {
+	nmDir := filepath.Join(profileDir, "node_modules")
+	entries, err := os.ReadDir(nmDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	type pkgID struct{ name, version string }
+	var ids []pkgID
+	for _, e := range entries {
+		// 安装簿记（.bin/.pnpm/.modules.yaml 等）与散文件不是包。
+		if strings.HasPrefix(e.Name(), ".") || !e.IsDir() {
+			continue
+		}
+		dirs := []string{e.Name()}
+		if strings.HasPrefix(e.Name(), "@") {
+			subs, err := os.ReadDir(filepath.Join(nmDir, e.Name()))
+			if err != nil {
+				return "", err
+			}
+			dirs = dirs[:0]
+			for _, s := range subs {
+				if s.IsDir() && !strings.HasPrefix(s.Name(), ".") {
+					dirs = append(dirs, filepath.ToSlash(filepath.Join(e.Name(), s.Name())))
+				}
+			}
+		}
+		for _, d := range dirs {
+			raw, err := os.ReadFile(filepath.Join(nmDir, d, "package.json"))
+			if err != nil {
+				return "", fmt.Errorf("读 %s/package.json: %w", d, err)
+			}
+			var m struct {
+				Version string `json:"version"`
+			}
+			if err := json.Unmarshal(raw, &m); err != nil {
+				return "", fmt.Errorf("解析 %s/package.json: %w", d, err)
+			}
+			ids = append(ids, pkgID{name: d, version: m.Version})
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i].name < ids[j].name })
+	h := sha256.New()
+	for _, id := range ids {
+		io.WriteString(h, id.name)
+		h.Write([]byte{0})
+		io.WriteString(h, id.version)
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
