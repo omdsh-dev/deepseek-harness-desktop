@@ -40,7 +40,8 @@ import { readFile } from "node:fs";
 		}
 	}
 
-	// 动态 import() 与 CJS require() 的裸 specifier 同样报错。
+	// 动态 import() 的裸 specifier 报错；CJS require() 走 createRequire
+	// 外部解析（原生模块外置），不视为缺陷。
 	dyn := `const m = await import("dynamic-pkg");
 const c = require("cjs-pkg");
 const ok = await import("node:fs");
@@ -50,12 +51,13 @@ const ok = await import("node:fs");
 	}
 	err = checkBareImports(path)
 	if err == nil {
-		t.Fatal("动态 import/require 裸导入应报错")
+		t.Fatal("动态 import 裸导入应报错")
 	}
-	for _, want := range []string{"dynamic-pkg", "cjs-pkg"} {
-		if !contains(err.Error(), want) {
-			t.Errorf("报错应提及 %s，得到: %v", want, err)
-		}
+	if !contains(err.Error(), "dynamic-pkg") {
+		t.Errorf("报错应提及 dynamic-pkg，得到: %v", err)
+	}
+	if contains(err.Error(), "cjs-pkg") {
+		t.Errorf("require() 不应报错，得到: %v", err)
 	}
 
 	// 重复裸导入去重。
