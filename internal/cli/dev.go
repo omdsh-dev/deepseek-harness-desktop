@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 )
 
 // runWeb 启动 dsh web（DSH_HOME=homeDir），解析就绪 URL 后返回并保持
@@ -23,6 +25,20 @@ func runWeb(dshBin, homeDir string) (string, error) {
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("start dsh web: %w", err)
 	}
+
+	// 信号兜底：Ctrl+C / kill 时主动终止 dsh web，保证不留孤儿后端。
+	// （终端 Ctrl+C 会把 SIGINT 发给整个前台进程组，dsh 同组也能收到；
+	// 此处再兜底 CLI 单独收到信号的情况。）
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		sig := <-sigCh
+		fmt.Fprintf(os.Stderr, "\n收到 %v，停止 dsh web\n", sig)
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+		os.Exit(130)
+	}()
 
 	urlCh := make(chan string, 1)
 	go func() {
@@ -46,9 +62,9 @@ func runWeb(dshBin, homeDir string) (string, error) {
 			cmd.Wait()
 			return "", fmt.Errorf("dsh web 未输出就绪 URL 即退出")
 		}
-		// 前台等待（Ctrl+C 结束）。
-		go cmd.Wait()
-		return u, nil
+		// 前台保持：阻塞等待 dsh web 退出（Ctrl+C 发给整个前台进程组，
+		// CLI 与 dsh 一起退出），不让后端残留为孤儿进程。
+		return u, cmd.Wait()
 	case err := <-waitErr(cmd):
 		return "", fmt.Errorf("dsh web 退出: %w", err)
 	}
