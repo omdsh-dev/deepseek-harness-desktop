@@ -11,8 +11,12 @@ import (
 
 // seedDirName 是 bundle 内 DSH_HOME 种子目录名（位于壳可执行文件上一级）。
 // 打包时 CLI 把构建出的 profile 布局（profiles/web/）复制到这里；运行时按
-// dshHome 策略把种子内容合并进目标 DSH_HOME（xdg 策略即 xdg.DataHome/<name>）。
+// dshHome 策略把种子强制落位到目标 DSH_HOME（xdg 策略即 xdg.DataHome/<name>）。
 const seedDirName = "dsh-home"
+
+// seedHashName 是种子里记录工作区内容 hash 的指纹文件名（bundle 时
+// 写入，壳启动时比对）。
+const seedHashName = ".seed-hash"
 
 // 复制时排除的目录（安装簿记与 store，非 dsh 运行时所需）。
 var seedSkipDirs = map[string]bool{
@@ -28,15 +32,17 @@ var seedSkipDirs = map[string]bool{
 //	                               （Linux ~/.local/share、macOS
 //	                               ~/Library/Application Support 等，见
 //	                               github.com/adrg/xdg），与 dev 的运行时
-//	                               home 一致。首次启动把 bundle 内种子
-//	                               拷贝进去，之后读写都在拷贝上；
-//	<绝对路径>                    — 固定使用该目录；若 profiles/web 缺失且
-//	                               种子存在，从种子补齐缺失文件；
+//	                               home 一致。每次启动把 bundle 内种子
+//	                               强制落位为实体 profile（指纹比对，
+//	                               见 ensureSeed）；
+//	<绝对路径>                    — 固定使用该目录；同样强制种子落位；
 //	env                          — 返回空串，不设置 DSH_HOME（继承环境）。
 //
-// dev 模式会把 profiles/web 创建为指向工作区的符号链接（运行时直连
-// 工作区）；打包 app 必须独立于工作区——检测到 symlink 时移除并复制
-// 实体种子（见 ensureSeed）。返回空串表示调用方不设置 DSH_HOME。
+// dev 模式在工作区本地临时目录 .dsh-store 里把 profiles/web 创建为指向
+// 工作区的符号链接（运行时直连工作区），不写全局 DSH_HOME；打包 app
+// 必须独立于工作区——启动时强制 profiles/web 为实体种子（dev/旧版本
+// 残留的 symlink 或旧实体拷贝都被替换，见 ensureSeed）。返回空串表示
+// 调用方不设置 DSH_HOME。
 func resolveDSHHome(cfg appConfig, exeDir string) (string, error) {
 	if v := os.Getenv("DSH_APP_DSH_HOME"); v != "" {
 		return v, nil
@@ -64,28 +70,45 @@ func resolveDSHHome(cfg appConfig, exeDir string) (string, error) {
 	}
 }
 
-// ensureSeed 确保目标 DSH_HOME 的 profile 是实体种子副本：dev 模式留下
-// 的 profiles/web 符号链接（指向工作区）不是有效种子——移除后从 bundle
-// 内种子复制实体，使 app 独立于工作区（工作区 node_modules 缺失/变更
-// 不影响 app 启动）。用户数据（sessions/storages 等）位于 home 根，
-// 不受 profile 替换影响。
+// ensureSeed 强制目标 DSH_HOME 的 profile 为来自 bundle 种子的实体副本：
+// dev/旧版本残留的符号链接与旧实体拷贝，与种子指纹（.seed-hash，打包时
+// 工作区内容 hash）不一致时移除并用种子覆盖——profile 定义随应用更新，
+// 应用永远以打包时的工作区内容为准。指纹一致（同一版本正常启动）跳过
+// 复制，避免每次启动全量复制 node_modules 闭包。用户数据（sessions/
+// settings.yaml 等）位于 home 根，不受 profile 替换影响。
 func ensureSeed(seed, dst, profile string) error {
 	if !dirExists(seed) {
 		return nil
 	}
 	profileDir := filepath.Join(dst, "profiles", profile)
-	if info, err := os.Lstat(profileDir); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		if err := os.Remove(profileDir); err != nil {
-			return fmt.Errorf("移除 dev symlink %s: %w", profileDir, err)
+	seedHash := readSeedHash(filepath.Join(seed, "profiles", profile, seedHashName))
+	if seedHash != "" {
+		if info, err := os.Lstat(profileDir); err == nil && info.Mode()&os.ModeSymlink == 0 {
+			if readSeedHash(filepath.Join(profileDir, seedHashName)) == seedHash {
+				return nil // 已是当前种子的实体副本
+			}
 		}
 	}
-	if dirExists(profileDir) {
-		return nil
+	if _, err := os.Lstat(profileDir); err == nil {
+		if err := os.RemoveAll(profileDir); err != nil {
+			return fmt.Errorf("移除旧 profile %s: %w", profileDir, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
 	}
 	if err := copySeed(seed, dst); err != nil {
-		return fmt.Errorf("首次启动拷贝 dsh-home 种子到 %s: %w", dst, err)
+		return fmt.Errorf("拷贝 dsh-home 种子到 %s: %w", dst, err)
 	}
 	return nil
+}
+
+// readSeedHash 读取 .seed-hash 指纹内容（不存在返回空串）。
+func readSeedHash(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
 }
 
 func dirExists(path string) bool {

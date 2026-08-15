@@ -29,3 +29,6 @@ test:
 
 clean:
     rm -rf target
+
+install:
+    go install ./cmd/deepseek-harness-desktop

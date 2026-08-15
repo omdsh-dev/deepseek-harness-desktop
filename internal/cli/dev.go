@@ -6,10 +6,48 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
+
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
 )
+
+// devHome 是 dev/plugin 共用的运行时 DSH_HOME：工作区本地临时目录
+// <ws>/.dsh-store（被 .gitignore 与构建 hash / 种子复制排除）。dev 每次
+// 重建，不触碰全局 xdg.DataHome/<name>——那是打包应用（xdg 策略）的
+// 数据目录，dev 的会话/设置不应混入其中。
+func devHome(ws string) string {
+	return filepath.Join(ws, ".dsh-store")
+}
+
+// ensureDevHome 构造 dev 运行时 DSH_HOME 布局（profiles/web → 工作区）。
+// fresh=true 时整目录重建（dev 每次全新启动：杜绝残留实体拷贝导致读旧
+// 配置）；fresh=false 只补缺失并校验链接（plugin add：不打断运行中的
+// dev）。返回 home 目录路径。
+func ensureDevHome(ws string, fresh bool) (string, error) {
+	homeDir := devHome(ws)
+	if fresh {
+		if err := os.RemoveAll(homeDir); err != nil {
+			return "", fmt.Errorf("清理 dev home %s: %w", homeDir, err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(homeDir, "profiles"), 0o755); err != nil {
+		return "", fmt.Errorf("构造 dev home %s: %w", homeDir, err)
+	}
+	profileLink := filepath.Join(homeDir, "profiles", config.ProfileName)
+	if fresh {
+		if err := os.Symlink(ws, profileLink); err != nil {
+			return "", fmt.Errorf("构造 profiles/web 链接: %w", err)
+		}
+		return homeDir, nil
+	}
+	if err := ensureProfileLink(profileLink, ws); err != nil {
+		return "", err
+	}
+	return homeDir, nil
+}
 
 // runWeb 启动 dsh web（DSH_HOME=homeDir），解析就绪 URL 后返回并保持
 // 前台运行（dsh 的 stdout/stderr 透传，Ctrl+C 退出）。dsh web 就绪行：

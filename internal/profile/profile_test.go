@@ -4,7 +4,29 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
 )
+
+// TestTemplatePackageJSONLoads：模板 package.json（dev 在非工作区目录
+// 兜底创建时生成）必须满足 config.Load 的校验（name 与 bundles 非空）。
+func TestTemplatePackageJSONLoads(t *testing.T) {
+	data, err := templates.ReadFile("templates/package.json")
+	if err != nil {
+		t.Fatalf("模板 package.json 缺失: %v", err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("模板 package.json 应通过 config.Load: %v", err)
+	}
+	if cfg.Name == "" || len(cfg.Bundles) == 0 {
+		t.Fatalf("模板应声明 name 与 bundles: %+v", cfg)
+	}
+}
 
 // makePkg 在 nmDir 下创建包目录（支持 @scope/name）与 package.json。
 func makePkg(t *testing.T, nmDir, name, version string) {

@@ -41,11 +41,11 @@ dsh 核心 peer 依赖完整）→ SEA 打包（内嵌 node 的 `dsh --profile w
 `bundle <workspace>` 依次执行：
 
 1. **依赖闭包**（`internal/profile`）：工作区工程文件缺失时从内嵌模板兜底
-   生成（pnpm-workspace.yaml 的 `nodeLinker: hoisted` 保证扁平闭包、
-   `autoInstallPeers` 保证 dsh 核心 peer 依赖、`allowBuilds` 放行原生模块
-   构建脚本）；未安装时在工作区 `pnpm install`（与 dsh 官方一致，复用已有
-   安装）。安装器定位真实 pnpm（`internal/pm`：`mise which pnpm` 优先、
-   拒绝 nub shim、缺失明确报错）。
+   生成（package.json 模板 + pnpm-workspace.yaml 的 `nodeLinker: hoisted`
+   保证扁平闭包、`autoInstallPeers` 保证 dsh 核心 peer 依赖、`allowBuilds`
+   放行原生模块构建脚本）；未安装时在工作区 `pnpm install`（与 dsh 官方
+   一致，复用已有安装）。安装器直接用 PATH 上的 pnpm（`internal/pm`，
+   不假设 mise/nub 等特定版本管理器）。
 2. **SEA 打包**（`internal/sea`）：工作区 node_modules 闭包解引用复制到
    `target/<name>/sea/node_modules`，向闭包写入 CJS 桥 `dsh-bridge`，复制
    `@deepseek-ai/dsh` 的 `config/` 与 `package.json`，生成薄入口
@@ -69,7 +69,10 @@ dsh 核心 peer 依赖完整）→ SEA 打包（内嵌 node 的 `dsh --profile w
    Linux 目录 + `tar.gz`（hicolor 图标集）、Windows 目录 + `zip`（ico），
    写入壳同目录 `appconfig.json` 与 DSH_HOME 种子 `dsh-home/`
    （`profiles/web` ← 工作区解引用复制；`settings.yaml`、`storages/`、
-   `sessions/` 等用户运行时数据不进种子）。
+   `sessions/` 等用户运行时数据不进种子）。种子写入 `.seed-hash` 指纹
+   （工作区内容 hash）：壳每次启动强制 profile 为实体种子——指纹不一致
+   （新版本 / dev 或旧版残留的 symlink / 旧实体拷贝）时覆盖重建，一致时
+   跳过（避免每次启动全量复制 node_modules 闭包）。
 
 图标渲染不依赖外部工具：SVG 源用 oksvg/rasterx（纯 Go）渲染为白底图，
 PNG 源直接解码，各平台尺寸由 `golang.org/x/image/draw` 缩放；macOS icns

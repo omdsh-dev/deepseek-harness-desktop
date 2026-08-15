@@ -21,7 +21,12 @@ deepseek-harness-desktop bundle --install examples/custom    # 打包并安装�
 cd examples/custom && deepseek-harness-desktop plugin add @foo/bar   # 向工作区加插件（代理 dsh plugin add）
 ```
 
-- `dev <workspace>` — 基于工作区直接起 `dsh web` 并打开浏览器页面（Ctrl+C 退出）
+- `dev [<workspace>]` — 基于工作区直接起 `dsh web` 并打开浏览器页面
+  （Ctrl+C 退出）。缺省当前目录；目录还不是工作区（缺 package.json）时
+  自动从模板创建工程文件并安装依赖，可在任意目录起步。运行时 DSH_HOME
+  为工作区本地临时目录 `.dsh-store`（每次 dev 重建，不污染打包应用使用
+  的全局数据目录），`profiles/web` 符号链接指向工作区，工作区配置修改
+  直接生效
 - `bundle <workspace>` — 打包为平台应用，产物在 `target/<name>/` 下。默认基于
   工作区内容 hash 增量：输入无变化时直接复用上次产物；`--force` 忽略缓存
   全新打包；`--install` 打包后安装（macOS `/Applications`、Linux XDG data +

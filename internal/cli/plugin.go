@@ -1,7 +1,7 @@
 // `plugin add` 子命令：代理 dsh 的 plugin add，但不安装到全局
 // DSH_HOME，而是修改工作区（bundle workspace）的 dsh.profile.bundles。
 //
-// 复用 dev 的运行时布局：DSH_HOME 固定为 xdg.DataHome/<name>，
+// 复用 dev 的运行时布局：DSH_HOME 为工作区本地临时目录 .dsh-store，
 // $DSH_HOME/profiles/web 符号链接指向工作区；随后调用工作区闭包里的
 // `dsh plugin --profile web add <pkg...>`——dsh 在工作区跑 pnpm add，
 // 成功后在 package.json 里 reconcile dsh.profile.bundles（依赖中声明
@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/adrg/xdg"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/pm"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/profile"
@@ -26,7 +25,7 @@ import (
 // pnpm add 与 bundles reconcile 均由工作区闭包里的 dsh 完成（与官方
 // 流程一致），本命令只负责 DSH_HOME 布局与进程调用。
 func PluginAdd(ws string, pkgs []string, skipInstall bool) error {
-	_, ws, cfg, err := loadWorkspace(ws)
+	_, ws, _, err := loadWorkspace(ws)
 	if err != nil {
 		return err
 	}
@@ -39,14 +38,11 @@ func PluginAdd(ws string, pkgs []string, skipInstall bool) error {
 		return err
 	}
 
-	// 2) 构造运行时 DSH_HOME（与 dev 一致）：xdg.DataHome/<name>，
-	//    profiles/web → 工作区。dsh 的 plugin 命令在此布局下操作工作区。
-	homeDir := filepath.Join(xdg.DataHome, cfg.Name)
-	if err := os.MkdirAll(filepath.Join(homeDir, "profiles"), 0o755); err != nil {
-		return err
-	}
-	profileLink := filepath.Join(homeDir, "profiles", config.ProfileName)
-	if err := ensureProfileLink(profileLink, ws); err != nil {
+	// 2) 构造 dev 运行时 DSH_HOME（与 dev 一致）：工作区 .dsh-store，
+	//    profiles/web → 工作区（只补缺失，不重建——dev 可能正在运行）。
+	//    dsh 的 plugin 命令在此布局下操作工作区。
+	homeDir, err := ensureDevHome(ws, false)
+	if err != nil {
 		return err
 	}
 

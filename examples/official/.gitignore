@@ -1,0 +1,2 @@
+# dev 运行时目录（工作区本地临时 DSH_HOME，每次 dev 重建）
+.dsh-store/

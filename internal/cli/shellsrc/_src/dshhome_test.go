@@ -35,7 +35,8 @@ func TestResolveDSHHomeOverride(t *testing.T) {
 }
 
 // TestResolveDSHHomeXdg：xdg 策略把种子内容拷贝到 XDG_DATA_HOME/<name>
-// （与 dev 的运行时 home 一致，不再加 dsh-home 子目录）。
+// （与 dev 的运行时 home 一致，不再加 dsh-home 子目录）；home 根的用户
+// 数据（种子里没有）不受 profile 落位影响。
 func TestResolveDSHHomeXdg(t *testing.T) {
 	dataHome := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dataHome)
@@ -48,10 +49,10 @@ func TestResolveDSHHomeXdg(t *testing.T) {
 	if err := os.MkdirAll(profileDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(seed, "settings.yaml"), []byte("llm: {}\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(profileDir, "package.json"), []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(profileDir, "package.json"), []byte("{}"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(profileDir, ".seed-hash"), []byte("h1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -70,19 +71,21 @@ func TestResolveDSHHomeXdg(t *testing.T) {
 	if !dirExists(filepath.Join(got, "profiles", "web")) {
 		t.Fatalf("首次启动应把种子内容拷贝到 %s", got)
 	}
-	if _, err := os.Stat(filepath.Join(got, "settings.yaml")); err != nil {
-		t.Fatalf("种子文件缺失: %v", err)
+	if hash := readSeedHash(filepath.Join(got, "profiles", "web", ".seed-hash")); hash != "h1" {
+		t.Fatalf(".seed-hash 应复制为 h1，得到 %q", hash)
 	}
 
-	// 二次启动：不重新拷贝（数据目录已有 profile）。
-	if err := os.RemoveAll(filepath.Join(got, "settings.yaml")); err != nil {
+	// 用户数据在 home 根（种子里没有）：不被 profile 落位删除。
+	userData := filepath.Join(got, "user-data.txt")
+	if err := os.WriteFile(userData, []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// 二次启动：指纹一致，跳过覆盖。
 	if _, err := resolveDSHHome(cfg, filepath.Join(seedRoot, "bin")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(got, "settings.yaml")); err == nil {
-		t.Fatalf("二次启动不应覆盖已有数据")
+	if raw, err := os.ReadFile(userData); err != nil || string(raw) != "keep" {
+		t.Fatalf("用户数据不应被影响（%q, %v）", raw, err)
 	}
 }
 
@@ -119,6 +122,84 @@ func TestResolveDSHHomeBadPath(t *testing.T) {
 	cfg.DSHHome = "relative/path"
 	if _, err := resolveDSHHome(cfg, "/tmp/exe"); err == nil {
 		t.Fatal("相对路径应报错")
+	}
+}
+
+// TestEnsureSeedOverridesStaleEntity：指纹不一致的旧实体拷贝被种子强制
+// 覆盖（profile 定义随应用更新）。
+func TestEnsureSeedOverridesStaleEntity(t *testing.T) {
+	seedRoot := t.TempDir()
+	seed := filepath.Join(seedRoot, "dsh-home")
+	seedProfile := filepath.Join(seed, "profiles", "web")
+	if err := os.MkdirAll(seedProfile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(seedProfile, "package.json"), []byte(`{"v":"new"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(seedProfile, ".seed-hash"), []byte("hash-new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dst := filepath.Join(t.TempDir(), "home")
+	dstProfile := filepath.Join(dst, "profiles", "web")
+	if err := os.MkdirAll(dstProfile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dstProfile, "package.json"), []byte(`{"v":"old"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dstProfile, ".seed-hash"), []byte("hash-old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ensureSeed(seed, dst, "web"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dstProfile, "package.json"))
+	if err != nil || string(raw) != `{"v":"new"}` {
+		t.Fatalf("旧实体应被种子覆盖（%q, %v）", raw, err)
+	}
+	hash, err := os.ReadFile(filepath.Join(dstProfile, ".seed-hash"))
+	if err != nil || string(hash) != "hash-new" {
+		t.Fatalf(".seed-hash 应更新为 hash-new，得到 %q（%v）", hash, err)
+	}
+}
+
+// TestEnsureSeedSkipsMatchingFingerprint：指纹一致时跳过覆盖（同一版本
+// 正常启动不重复复制闭包）。
+func TestEnsureSeedSkipsMatchingFingerprint(t *testing.T) {
+	seedRoot := t.TempDir()
+	seed := filepath.Join(seedRoot, "dsh-home")
+	seedProfile := filepath.Join(seed, "profiles", "web")
+	if err := os.MkdirAll(seedProfile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(seedProfile, "package.json"), []byte(`{"v":"seed"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(seedProfile, ".seed-hash"), []byte("same"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dst := filepath.Join(t.TempDir(), "home")
+	dstProfile := filepath.Join(dst, "profiles", "web")
+	if err := os.MkdirAll(dstProfile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dstProfile, "package.json"), []byte(`{"v":"user"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dstProfile, ".seed-hash"), []byte("same"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ensureSeed(seed, dst, "web"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dstProfile, "package.json"))
+	if err != nil || string(raw) != `{"v":"user"}` {
+		t.Fatalf("指纹一致应跳过覆盖（%q, %v）", raw, err)
 	}
 }
 

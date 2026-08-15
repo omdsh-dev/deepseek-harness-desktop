@@ -25,7 +25,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/adrg/xdg"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/bundle"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
@@ -37,7 +36,8 @@ import (
 const usage = `deepseek-harness-desktop — 把 dsh 的 --profile web 与 cordis.patch.yml 打包为独立自定义桌面。
 
 用法（go install 后任意目录，或仓库内 go tool）：
-  deepseek-harness-desktop dev <workspace>                  基于工作区起 dsh web 并打开浏览器
+  deepseek-harness-desktop dev [<workspace>]                基于工作区起 dsh web 并打开浏览器
+                                                             （缺省当前目录；非工作区目录自动从模板创建）
   deepseek-harness-desktop bundle [--platform=os/arch] [--force] [--install] <workspace>
   deepseek-harness-desktop plugin add [--workspace=<path>] <package...>
                                                             代理 dsh plugin add：在工作区跑 pnpm add，
@@ -59,8 +59,9 @@ const usage = `deepseek-harness-desktop — 把 dsh 的 --profile web 与 cordis
   cordis.patch.yml   profile patch 层（dsh 应用在 bundle 层之后）
   icon.svg           应用图标（可选，dsh.desktop.icon 引用）
 
-settings.yaml 等用户运行时数据不属于工作区：首次启动后由应用在
-DSH_HOME（XDG_DATA_HOME/<name>）中生成。
+settings.yaml 等用户运行时数据不属于工作区：打包应用按 dshHome 策略
+在 XDG_DATA_HOME/<name>（xdg）生成；dev 使用工作区本地临时目录
+.dsh-store（每次 dev 重建，不污染全局数据目录）。
 
 全部产物在仓库根 target/ 下。
 `
@@ -124,11 +125,11 @@ func Run(args []string) int {
 		fmt.Print(usage)
 		return 0
 	case "dev":
-		if len(rest) < 2 {
-			fmt.Fprintln(os.Stderr, "用法：deepseek-harness-desktop dev <workspace>")
-			return 2
+		ws := "."
+		if len(rest) >= 2 {
+			ws = rest[1]
 		}
-		if err := Dev(rest[1], skipInstall); err != nil {
+		if err := Dev(ws, skipInstall); err != nil {
 			fmt.Fprintf(os.Stderr, "dev 失败：%v\n", err)
 			return 1
 		}
@@ -197,7 +198,7 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	if err := checkPlatform(platform); err != nil {
 		return "", err
 	}
-	_, ws, cfg, err := loadWorkspace(ws)
+	root, ws, cfg, err := loadWorkspace(ws)
 	if err != nil {
 		return "", err
 	}
@@ -210,16 +211,26 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	}
 	hashIgnored := gi.Ignored
 
-	// 构建缓存：工作区 dir hash + 闭包指纹 + 平台。产物位于工作区 target/ 下。
+	// CLI/壳源码指纹：代码变更（新二进制）后旧产物不再复用——旧产物
+	// 的壳与种子（如 .seed-hash）可能与新代码语义不一致。
+	tool, err := toolHash(root)
+	if err != nil {
+		return "", fmt.Errorf("计算工具源码 hash: %w", err)
+	}
+
+	// 构建缓存：工作区 dir hash + 闭包指纹 + 平台 + 工具指纹。产物位于
+	// 工作区 target/ 下。wsHash 同时作为 DSH_HOME 种子的 .seed-hash 指纹
+	// （壳启动时比对）。
 	statePath := filepath.Join(config.BuildDir(ws, cfg), ".build-state.json")
+	wsHash := ""
 	if !force {
-		wsHash, err := workspaceHash(ws, hashSkip, hashIgnored)
+		wsHash, err = workspaceHash(ws, hashSkip, hashIgnored)
 		if err != nil {
 			return "", fmt.Errorf("计算工作区 hash: %w", err)
 		}
 		if state, err := os.ReadFile(statePath); err == nil {
 			var st buildState
-			if json.Unmarshal(state, &st) == nil && st.Hash == wsHash && st.Platform == platformName() {
+			if json.Unmarshal(state, &st) == nil && st.Hash == wsHash && st.Platform == platformName() && st.Tool == tool {
 				appRoot := bundle.AppRoot(ws, cfg)
 				if dirExists(appRoot) {
 					fmt.Printf("==> 无变化（%s），复用 %s\n", st.Hash[:12], appRoot)
@@ -235,6 +246,13 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	}
 
 	fmt.Printf("==> 打包 %s（%s %s）\n", cfg.Name, config.ProfileName, cfg.Version)
+
+	// 种子指纹：--force 也计算（写入产物种子，供壳启动比对）。
+	if wsHash == "" {
+		if wsHash, err = workspaceHash(ws, hashSkip, hashIgnored); err != nil {
+			return "", fmt.Errorf("计算工作区 hash: %w", err)
+		}
+	}
 
 	// 1) SEA 后端。
 	seaExe, err := sea.Build(ws, cfg, skipInstall)
@@ -255,6 +273,7 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 		Cfg:       cfg,
 		SeaExe:    seaExe,
 		ShellBin:  shellBin,
+		SeedHash:  wsHash,
 	})
 	if err != nil {
 		return "", err
@@ -262,13 +281,10 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	fmt.Printf("==> 产物: %s\n", appRoot)
 
 	// 记录构建状态。
-	wsHash, err := workspaceHash(ws, hashSkip, hashIgnored)
-	if err == nil {
-		st := buildState{Hash: wsHash, Platform: platformName()}
-		if raw, err := json.Marshal(st); err == nil {
-			if err := os.MkdirAll(config.BuildDir(ws, cfg), 0o755); err == nil {
-				_ = os.WriteFile(statePath, raw, 0o644)
-			}
+	st := buildState{Hash: wsHash, Platform: platformName(), Tool: tool}
+	if raw, err := json.Marshal(st); err == nil {
+		if err := os.MkdirAll(config.BuildDir(ws, cfg), 0o755); err == nil {
+			_ = os.WriteFile(statePath, raw, 0o644)
 		}
 	}
 
@@ -285,6 +301,21 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 type buildState struct {
 	Hash     string `json:"hash"`
 	Platform string `json:"platform"`
+	Tool     string `json:"tool"` // CLI/壳源码指纹（代码变更使旧产物失效）
+}
+
+// toolHash 计算 CLI 构建输入的源码指纹（internal/ + cmd/ + server/），
+// 用于构建缓存失效：CLI/壳代码变更后旧产物不再复用。
+func toolHash(root string) (string, error) {
+	var parts []string
+	for _, dir := range []string{"internal", "cmd", "server"} {
+		h, err := fsutil.DirHash(filepath.Join(root, dir), hashSkip, nil)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, h)
+	}
+	return strings.Join(parts, ":"), nil
 }
 
 // workspaceHash 计算工作区构建缓存指纹：工程文件 dir hash + 闭包顶层包
@@ -314,6 +345,9 @@ var hashSkip = map[string]bool{
 	".store":       true,
 	".DS_Store":    true,
 	"cordis.yml":   true,
+	// dev 运行时目录（工作区本地临时 DSH_HOME，每次 dev 重建）：内容随
+	// dev 会话变化，不参与 bundle 增量缓存。
+	".dsh-store": true,
 }
 
 // platformName 返回当前平台的 canonical 名（os/arch）。
@@ -324,14 +358,29 @@ func platformName() string {
 // Dev 基于工作区直接起一个 dsh web 并打开浏览器页面（不组装桌面应用，
 // 无 Wails 壳）。等价于官方流程：
 //
-//	DSH_HOME=<xdg.DataHome>/<name> dsh web --patch <ws>/cordis.patch.yml
+//	DSH_HOME=<ws>/.dsh-store dsh web --patch <ws>/cordis.patch.yml
 //
-// 实现：DSH_HOME 固定为 XDG 数据目录（与打包后应用运行时一致），
-// $DSH_HOME/profiles/web 符号链接指向工作区——dsh 直接从工作区读
-// package.json（bundles）与 cordis.patch.yml（patch 层），工作区的
-// pnpm install 结果直接可见。
+// 实现：DSH_HOME 为工作区本地临时目录 <ws>/.dsh-store（每次 dev 重建，
+// 不污染打包应用使用的全局 XDG 数据目录），$DSH_HOME/profiles/web 符号
+// 链接指向工作区——dsh 直接从工作区读 package.json（bundles）与
+// cordis.patch.yml（patch 层），工作区的 pnpm install 结果直接可见。
+// 目录还不是工作区（缺 package.json）时从内嵌模板兜底创建工程文件并
+// 安装依赖（dev 可在任意目录起步）。
 func Dev(ws string, skipInstall bool) error {
-	_, ws, cfg, err := loadWorkspace(ws)
+	_, ws, err := resolveWorkspace(ws)
+	if err != nil {
+		return err
+	}
+
+	if _, err := config.Load(ws); err != nil {
+		// 当前目录还不是工作区：从模板兜底创建工程文件并安装依赖，
+		// 然后重新解析（已有文件不覆盖）。
+		fmt.Printf("==> %s 不是工作区，从模板创建工程文件\n", ws)
+		if _, err := profile.Ensure(ws, skipInstall); err != nil {
+			return err
+		}
+	}
+	_, _, cfg, err := loadWorkspace(ws)
 	if err != nil {
 		return err
 	}
@@ -343,17 +392,14 @@ func Dev(ws string, skipInstall bool) error {
 		return err
 	}
 
-	// 2) 构造运行时 DSH_HOME：xdg.DataHome/<name>，profiles/web → 工作区。
-	homeDir := filepath.Join(xdg.DataHome, cfg.Name)
-	if err := os.MkdirAll(filepath.Join(homeDir, "profiles"), 0o755); err != nil {
+	// 2) 构造 dev 运行时 DSH_HOME：工作区本地临时目录 .dsh-store（每次
+	//    全新重建），profiles/web → 工作区。不触碰全局 XDG 数据目录——
+	//    那是打包应用（xdg 策略）的数据目录。
+	homeDir, err := ensureDevHome(ws, true)
+	if err != nil {
 		return err
 	}
-	profileLink := filepath.Join(homeDir, "profiles", config.ProfileName)
-	if _, err := os.Lstat(profileLink); os.IsNotExist(err) {
-		if err := os.Symlink(ws, profileLink); err != nil {
-			return fmt.Errorf("构造 profiles/web 链接: %w", err)
-		}
-	}
+	fmt.Printf("==> dev home: %s\n", homeDir)
 
 	// 3) 启动 dsh web（工作区闭包里的 dsh），解析就绪 URL。
 	dshBin := filepath.Join(ws, "node_modules", ".bin", "dsh")
@@ -377,16 +423,7 @@ func Dev(ws string, skipInstall bool) error {
 // `examples/<name>` 形式始终解析到仓库根的 examples/ 目录；其余路径按
 // 当前目录解析。
 func loadWorkspace(ws string) (string, string, *config.Config, error) {
-	root, err := repoRoot()
-	if err != nil {
-		return "", "", nil, err
-	}
-	if !filepath.IsAbs(ws) {
-		if ws == "examples" || strings.HasPrefix(ws, "examples"+string(filepath.Separator)) {
-			ws = filepath.Join(root, ws)
-		}
-	}
-	ws, err = filepath.Abs(ws)
+	root, ws, err := resolveWorkspace(ws)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -395,6 +432,22 @@ func loadWorkspace(ws string) (string, string, *config.Config, error) {
 		return "", "", nil, err
 	}
 	return root, ws, cfg, nil
+}
+
+// resolveWorkspace 只解析工作区绝对路径（不要求已是工作区）：返回
+// （仓库根, 绝对路径）。
+func resolveWorkspace(ws string) (string, string, error) {
+	root, err := repoRoot()
+	if err != nil {
+		return "", "", err
+	}
+	if !filepath.IsAbs(ws) {
+		if ws == "examples" || strings.HasPrefix(ws, "examples"+string(filepath.Separator)) {
+			ws = filepath.Join(root, ws)
+		}
+	}
+	ws, err = filepath.Abs(ws)
+	return root, ws, err
 }
 
 // repoRoot 返回仓库根（internal/cli 源文件上三级；go run / 源码树构建

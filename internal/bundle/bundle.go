@@ -55,6 +55,9 @@ var seedSkip = map[string]bool{
 	"settings.yaml": true,
 	"storages":      true,
 	"sessions":      true,
+	// dev 运行时目录（工作区 .dsh-store）：不进种子——内含指向工作区
+	// 自身的符号链接，复制会递归。
+	".dsh-store": true,
 }
 
 // Inputs 是一次装配的全部输入。
@@ -63,6 +66,7 @@ type Inputs struct {
 	Cfg       *config.Config
 	SeaExe    string // SEA 可执行（sea/bin/dsh）
 	ShellBin  string // 壳二进制（go build 壳源码的产物）
+	SeedHash  string // 工作区内容 hash（写入种子的 .seed-hash 指纹，壳启动时比对）
 }
 
 // AppRoot 返回平台应用的产物根目录（位于工作区 target/ 下）。
@@ -149,6 +153,13 @@ func assembleLayout(in Inputs, appRoot string) (string, error) {
 	}
 	if err := fsutil.CopyDirDeref(in.Workspace, filepath.Join(homeRoot, "profiles", config.ProfileName), seedSkip, seedIgnored); err != nil {
 		return "", fmt.Errorf("copy dsh-home seed: %w", err)
+	}
+	// 种子指纹：工作区内容 hash，壳启动时比对（一致跳过、不一致覆盖），
+	// 避免每次启动全量复制 node_modules 闭包。
+	if in.SeedHash != "" {
+		if err := os.WriteFile(filepath.Join(homeRoot, "profiles", config.ProfileName, ".seed-hash"), []byte(in.SeedHash), 0o644); err != nil {
+			return "", fmt.Errorf("write .seed-hash: %w", err)
+		}
 	}
 
 	return binDir, nil

@@ -1,0 +1,119 @@
+package cli
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+)
+
+// TestEnsureDevHomeFresh：fresh 重建后 profiles/web 是指向工作区的符号
+// 链接，残留的实体目录/旧数据被清空。
+func TestEnsureDevHomeFresh(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows 符号链接需要特权")
+	}
+	ws := t.TempDir()
+
+	// 预置残留：实体 profiles/web 拷贝 + 杂项数据，模拟旧布局/实体拷贝
+	// 导致的 dev 读旧配置。
+	leftover := filepath.Join(devHome(ws), "profiles", "web")
+	if err := os.MkdirAll(filepath.Join(leftover, "node_modules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(leftover, "package.json"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(devHome(ws), "settings.yaml"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	home, err := ensureDevHome(ws, true)
+	if err != nil {
+		t.Fatalf("ensureDevHome: %v", err)
+	}
+	if home != devHome(ws) {
+		t.Fatalf("home 应为 %s，得到 %s", devHome(ws), home)
+	}
+
+	link := filepath.Join(home, "profiles", "web")
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("profiles/web 应存在: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("profiles/web 应为符号链接")
+	}
+	want, err := filepath.EvalSymlinks(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := filepath.EvalSymlinks(link); err != nil || got != want {
+		t.Fatalf("链接应指向 %s，得到 %s（%v）", want, got, err)
+	}
+
+	// 残留应被清空（fresh 重建）。
+	if _, err := os.Stat(filepath.Join(home, "settings.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("fresh 重建应清空残留 settings.yaml（%v）", err)
+	}
+}
+
+// TestWorkspaceHashIgnoresDevStore：.dsh-store（dev 运行时目录）不参与
+// 工作区 hash——dev 会话数据变化不会破坏 bundle 增量缓存。
+func TestWorkspaceHashIgnoresDevStore(t *testing.T) {
+	ws := t.TempDir()
+	for _, f := range []string{"package.json", "cordis.patch.yml"} {
+		if err := os.WriteFile(filepath.Join(ws, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h1, err := workspaceHash(ws, hashSkip, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 写入 dev 运行时数据（模拟一次 dev 会话）。
+	if err := os.MkdirAll(filepath.Join(ws, ".dsh-store", "profiles", "web"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".dsh-store", "settings.yaml"), []byte("y"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h2, err := workspaceHash(ws, hashSkip, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h1 != h2 {
+		t.Fatalf(".dsh-store 不应影响工作区 hash：%s != %s", h1, h2)
+	}
+}
+
+// TestEnsureDevHomeKeep：非 fresh（plugin add）不重建：已有链接保持，
+// 缺失时创建。
+func TestEnsureDevHomeKeep(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows 符号链接需要特权")
+	}
+	ws := t.TempDir()
+	home, err := ensureDevHome(ws, false)
+	if err != nil {
+		t.Fatalf("首次构造: %v", err)
+	}
+	link := filepath.Join(home, "profiles", "web")
+	if got, err := filepath.EvalSymlinks(link); err != nil {
+		t.Fatalf("profiles/web 应是指向工作区的链接: %v", err)
+	} else if want, _ := filepath.EvalSymlinks(ws); got != want {
+		t.Fatalf("链接应指向 %s，得到 %s", want, got)
+	}
+
+	// 再次调用（幂等）：不报错、不重建已有数据。
+	if err := os.WriteFile(filepath.Join(home, "settings.yaml"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ensureDevHome(ws, false); err != nil {
+		t.Fatalf("二次构造: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(home, "settings.yaml"))
+	if err != nil || string(raw) != "keep" {
+		t.Fatalf("非 fresh 不应清空已有数据（%q, %v）", raw, err)
+	}
+}
