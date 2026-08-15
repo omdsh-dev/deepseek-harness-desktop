@@ -4,8 +4,41 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
+
+// TestToolFingerprint：源码树完整时产出 src 指纹且稳定；源码树缺失/不
+// 完整（go install 后脱离源码树、CI 结构不完整）时不崩溃（回退 VCS 或
+// 空串）。
+func TestToolFingerprint(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"internal", "cmd", "server"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, dir, "a.go"), []byte("package x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f1 := toolFingerprint(root)
+	if f1 == "" || !strings.HasPrefix(f1, "src:") {
+		t.Fatalf("完整源码树应产出 src 指纹，得到 %q", f1)
+	}
+	if f2 := toolFingerprint(root); f2 != f1 {
+		t.Fatalf("指纹应稳定：%s != %s", f1, f2)
+	}
+
+	// 源码树缺失（go install 后脱离源码树）：不崩溃。
+	_ = toolFingerprint(filepath.Join(t.TempDir(), "no-such-root"))
+
+	// 源码树不完整（如 CI 中 desktop/ 缺 internal/）：不崩溃。
+	partial := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(partial, "cmd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = toolFingerprint(partial)
+}
 
 // TestEnsureDevHomeFresh：fresh 重建后 profiles/web 是指向工作区的符号
 // 链接，残留的实体目录/旧数据被清空。

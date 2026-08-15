@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 
 	"github.com/omdsh-dev/deepseek-harness-desktop/internal/bundle"
@@ -212,11 +213,10 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	hashIgnored := gi.Ignored
 
 	// CLI/壳源码指纹：代码变更（新二进制）后旧产物不再复用——旧产物
-	// 的壳与种子（如 .seed-hash）可能与新代码语义不一致。
-	tool, err := toolHash(root)
-	if err != nil {
-		return "", fmt.Errorf("计算工具源码 hash: %w", err)
-	}
+	// 的壳与种子（如 .seed-hash）可能与新代码语义不一致。源码树不可用
+	// （go install 后脱离源码树 / CI 结构不完整）时回退二进制内嵌的 VCS
+	// revision；都不可用时返回空串（缓存不命中，每次全量构建）。
+	tool := toolFingerprint(root)
 
 	// 构建缓存：工作区 dir hash + 闭包指纹 + 平台 + 工具指纹。产物位于
 	// 工作区 target/ 下。wsHash 同时作为 DSH_HOME 种子的 .seed-hash 指纹
@@ -230,7 +230,7 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 		}
 		if state, err := os.ReadFile(statePath); err == nil {
 			var st buildState
-			if json.Unmarshal(state, &st) == nil && st.Hash == wsHash && st.Platform == platformName() && st.Tool == tool {
+			if json.Unmarshal(state, &st) == nil && tool != "" && st.Tool == tool && st.Hash == wsHash && st.Platform == platformName() {
 				appRoot := bundle.AppRoot(ws, cfg)
 				if dirExists(appRoot) {
 					fmt.Printf("==> 无变化（%s），复用 %s\n", st.Hash[:12], appRoot)
@@ -304,18 +304,39 @@ type buildState struct {
 	Tool     string `json:"tool"` // CLI/壳源码指纹（代码变更使旧产物失效）
 }
 
-// toolHash 计算 CLI 构建输入的源码指纹（internal/ + cmd/ + server/），
-// 用于构建缓存失效：CLI/壳代码变更后旧产物不再复用。
-func toolHash(root string) (string, error) {
+// toolFingerprint 返回构建工具指纹，用于构建缓存失效：CLI/壳代码变更
+// 后旧产物不再复用。优先源码树 hash（internal/ + cmd/ + server/，仓库
+// 内开发场景）；源码树不可用（go install 后脱离源码树、CI 结构不完整）
+// 时回退二进制内嵌的 VCS revision；都不可用时返回空串（缓存不命中，
+// 每次全量构建，保证产物正确）。
+func toolFingerprint(root string) string {
 	var parts []string
 	for _, dir := range []string{"internal", "cmd", "server"} {
 		h, err := fsutil.DirHash(filepath.Join(root, dir), hashSkip, nil)
 		if err != nil {
-			return "", err
+			parts = nil
+			break
 		}
 		parts = append(parts, h)
 	}
-	return strings.Join(parts, ":"), nil
+	if len(parts) == 3 {
+		return "src:" + strings.Join(parts, ":")
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		var rev, modified string
+		for _, s := range info.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				rev = s.Value
+			case "vcs.modified":
+				modified = s.Value
+			}
+		}
+		if rev != "" {
+			return "vcs:" + rev + ":" + modified
+		}
+	}
+	return ""
 }
 
 // workspaceHash 计算工作区构建缓存指纹：工程文件 dir hash + 闭包顶层包
