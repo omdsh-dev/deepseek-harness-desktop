@@ -1,3 +1,1 @@
-# 自定义 patch 层：禁用内置 JSONL 会话持久化（改用 session-persistence-rdb）。
-- id: session-persistence-jsonl
-  disabled: true
+[]

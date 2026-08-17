@@ -1,0 +1,16 @@
+{
+  "name": "dsh-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app"
+      ]
+    }
+  }
+}

@@ -216,3 +216,7 @@ minimumReleaseAgeExclude:
   - '@deepseek-ai/node-addon-landlock-run@0.1.1'
   - '@deepseek-ai/schemastery@3.18.1'
   - '@morlay/session-persistence-rdb@0.0.1'
+  - '@morlay/better-session@0.0.3'
+  - '@morlay/session-branch@0.0.3'
+  - '@morlay/session-rdb@0.0.3'
+  - '@morlay/ui-conversation-message-actions@0.0.3'
