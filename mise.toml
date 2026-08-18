@@ -1,6 +1,7 @@
 [tools]
 just = 'latest'
 go = 'latest'
-node = 'latest'
-pnpm = 'latest'
 goreleaser = 'latest'
+node = 'latest'
+pnpm = '12.0.0-rc.6'
+

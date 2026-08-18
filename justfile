@@ -2,7 +2,7 @@
 # 命令已通过 go.mod 的 tool 指令注册：go tool deepseek-harness-desktop。
 
 # 打包指定工作区（默认本机平台）。
-#   just bundle examples/custom
+# just bundle examples/custom
 bundle *args: sync-shell-src
     go tool deepseek-harness-desktop bundle {{ args }}
 
@@ -14,13 +14,13 @@ sync-shell-src:
     ./scripts/sync-shellsrc.sh
 
 # 开发模式：基于工作区起 dsh web 并打开浏览器。
-#   just dev examples/custom
+# just dev examples/custom
 dev *args:
     go tool deepseek-harness-desktop dev {{ args }}
 
 # 向工作区添加 dsh 插件（代理 dsh plugin add，修改工作区 bundles）。
 #   just plugin add --workspace examples/custom @foo/bar
-#   cd examples/custom && just plugin add @foo/bar
+# cd examples/custom && just plugin add @foo/bar
 plugin *args:
     go tool deepseek-harness-desktop plugin {{ args }}
 
@@ -32,3 +32,9 @@ clean:
 
 install:
     go install ./cmd/deepseek-harness-desktop
+
+dep:
+    pnpm install
+
+mod custom 'examples/custom/justfile'
+mod official 'examples/official/justfile'
