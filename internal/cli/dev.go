@@ -53,7 +53,7 @@ func ensureDevHome(ws string, fresh bool) (string, error) {
 // 前台运行（dsh 的 stdout/stderr 透传，Ctrl+C 退出）。dsh web 就绪行：
 // `dsh web: http://127.0.0.1:<port>`。
 func runWeb(dshBin, homeDir string) (string, error) {
-	cmd := exec.Command(dshBin, "web", "--port", "0")
+	cmd := exec.Command(dshBin, "web", "--port", "0", "--no-open")
 	cmd.Env = append(os.Environ(), "DSH_HOME="+homeDir)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
