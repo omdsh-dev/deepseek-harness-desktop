@@ -56,15 +56,15 @@ dsh 核心 peer 依赖完整）→ SEA 打包（内嵌 node 的 `dsh --profile w
    `import()` 走正常 Node ESM loader 加载 dsh CLI 与全部依赖——依赖
    闭包、原生模块（Node-API addon）与顶层 await 均不经过 SEA blob
    （blob 内模块只能加载 node: builtin），与 dev 的模块解析行为一致。
-3. **壳构建**：`go build .`（Wails v3；壳源码由模块根 package main
-   （`internal/shell/`）与 `server/` 包组成）。构建输入（壳源码与精简
-   go.mod）由 `internal/cli/shellsrc` 以 go:embed 内嵌在 CLI 二进制中，
-   运行时解出到 `target/<name>/.shell-src/`（壳专用模块根）再构建——
+3. **壳构建**：`go build ./cmd`（Wails v3；壳源码拆分到 `pkg/shell`
+   子包：`appconfig`（运行时配置）、`dshhome`（DSH_HOME 解析与种子落位）、
+   `server`（后端进程生命周期）、`supervise`（后端守护），入口 `cmd/`
+   package main 只做简单装配）。构建输入由 `pkg/shell/embed.go` 以
+   go:embed 内嵌在 CLI 二进制中，运行时解出到
+   `target/<name>/.shell-src/`（壳专用模块根，go.mod 由 CLI 动态生成、
+   module 名复用 `.../pkg/shell` 使壳内 import 解析到本地子包）再构建——
    CLI 不依赖仓库 checkout，`go install` 后也能 bundle（脱离源码树）。
-   副本由 `scripts/sync-shellsrc.sh`（`just sync-shell-src`，goreleaser
-   发布前 before hook 执行同一脚本）从仓库同步，并在 `_src` 内
-   `go mod tidy` 把 go.mod 精简到只含壳依赖（去掉 tool 指令与 CLI 专用
-   依赖）；改壳源码或依赖后必须重新同步，`go test` 会校验副本一致性。
+   壳源码即主模块代码，无内嵌副本同步问题，也无需 sync 脚本。
 4. **平台组装**（`internal/bundle`）：macOS `.app`（Info.plist、icns）、
    Linux 目录 + `tar.gz`（hicolor 图标集）、Windows 目录 + `zip`（ico），
    写入壳同目录 `appconfig.json` 与 DSH_HOME 种子 `dsh-home/`

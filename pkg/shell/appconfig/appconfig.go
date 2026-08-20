@@ -1,4 +1,5 @@
-package main
+// Package appconfig 解析打包后桌面壳的运行时配置（appconfig.json）。
+package appconfig
 
 import (
 	"encoding/json"
@@ -7,32 +8,26 @@ import (
 	"path/filepath"
 )
 
-// appConfig 是 CLI 打包时写入壳同目录 appconfig.json 的运行时配置。
-// 所有字段都有默认值，缺省 appconfig.json 时壳按默认行为运行。
-type appConfig struct {
-	// Name 是应用名（窗口标题、XDG 数据目录名）。
-	Name string `json:"name"`
-	// ID 是 bundle 标识（macOS CFBundleIdentifier）。
-	ID string `json:"id"`
-	// Version 是应用版本号。
-	Version string `json:"version"`
+// Config 是 CLI 打包时写入壳同目录 appconfig.json 的运行时配置。
+type Config struct {
+	Name    string `json:"name"`    // 应用名（窗口标题、XDG 数据目录名）
+	ID      string `json:"id"`      // bundle 标识（macOS CFBundleIdentifier）
+	Version string `json:"version"` // 应用版本号
 	Window  struct {
 		Width     int `json:"width"`
 		Height    int `json:"height"`
 		MinWidth  int `json:"minWidth"`
 		MinHeight int `json:"minHeight"`
 	} `json:"window"`
-	// Profile 是后端 boot 的 dsh profile 名。
-	Profile string `json:"profile"`
-	// DSHHome 是 DSH_HOME 解析策略：xdg（默认）| env | 绝对路径。
-	DSHHome string `json:"dshHome"`
+	Profile string `json:"profile"` // 后端 boot 的 dsh profile 名
+	DSHHome string `json:"dshHome"` // DSH_HOME 策略：xdg（默认）| env | 绝对路径
 }
 
 const appConfigFile = "appconfig.json"
 
-// defaultAppConfig：1280x800、profile web、DSH_HOME 按 XDG。
-func defaultAppConfig() appConfig {
-	var c appConfig
+// Default 返回默认配置：1280x800、profile web、DSH_HOME 按 XDG。
+func Default() Config {
+	var c Config
 	c.Name = "dsh-desktop"
 	c.Window.Width = 1280
 	c.Window.Height = 800
@@ -43,10 +38,9 @@ func defaultAppConfig() appConfig {
 	return c
 }
 
-// loadAppConfig 读取壳可执行文件同目录的 appconfig.json；缺失或解析失败
-// 时回退默认值（解析失败仅告警，不阻断启动）。
-func loadAppConfig(exeDir string) appConfig {
-	cfg := defaultAppConfig()
+// Load 读取壳同目录 appconfig.json；缺失或解析失败回退默认值。
+func Load(exeDir string) Config {
+	cfg := Default()
 	raw, err := os.ReadFile(filepath.Join(exeDir, appConfigFile))
 	if err != nil {
 		return cfg

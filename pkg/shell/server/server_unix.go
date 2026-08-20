@@ -14,8 +14,8 @@ import (
 // Name 是壳同目录下 SEA 后端可执行文件名（Unix 无扩展名）。
 const Name = "dsh-server"
 
-// rcFileFor 按用户 shell 返回要 source 的配置文件路径（不检查存在性，
-// 缺失时 source 报错但被重定向吞掉，不影响后续）。
+// rcFileFor 按用户 shell 返回要 source 的配置文件路径（缺失时 source 报错
+// 但被重定向吞掉，不影响后续）。
 func rcFileFor(shell string) string {
 	switch filepath.Base(shell) {
 	case "bash":
@@ -32,14 +32,13 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// command 构造 spawn dsh-server 的命令。当用户 shell 有对应 rc 文件时，
-// 先 source 该文件（让后端继承用户终端里的环境变量，如 API key），再 exec
-// dsh-server —— exec 保持同一进程（PID 不变），守护 wait 语义不受影响。
-// source 的输出重定向到 /dev/null，避免污染后端 stdout 的 URL 行。
-// 进程放入独立进程组（Setpgid）：应用退出时按组终止，保证后端
-// （SEA 内嵌 node 的 dsh-server，及其将来可能 spawn 的子进程）整体清理，
-// 不残留孤儿 node。ctx 取消不依赖 exec.CommandContext 的异步 kill（它只杀
-// 直接子进程且时机不受控），由调用方经 Process.Stop 显式终止。
+// command 构造 spawn dsh-server 的命令。用户 shell 有对应 rc 文件时先 source
+// 它（让后端继承用户终端里的环境变量，如 API key），再 exec dsh-server——
+// exec 保持同一进程（PID 不变），守护 wait 语义不受影响；source 输出重定向
+// 到 /dev/null，避免污染后端 stdout 的 URL 行。进程放入独立进程组
+// （Setpgid）：应用退出时按组终止，保证后端及其子进程整体清理，不留孤儿
+// node。ctx 取消不依赖 exec.CommandContext 的异步 kill（只杀直接子进程且
+// 时机不受控），由调用方经 Process.Stop 显式终止。
 func command(exeDir, profile, port, dshHome string) *exec.Cmd {
 	server := filepath.Join(exeDir, Name)
 	args := []string{"--profile", profile, "--port", port}

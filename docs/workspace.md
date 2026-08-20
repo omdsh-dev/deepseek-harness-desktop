@@ -69,8 +69,8 @@ DSH_HOME=$XDG_DATA_HOME/dsh ./node_modules/.bin/dsh web --patch ./cordis.patch.y
 
 ```sh
 cd examples/custom
-deepseek-harness-desktop plugin add @morlay/session-persistence-rdb   # 工作区 pnpm add + bundles reconcile
-deepseek-harness-desktop plugin add --workspace examples/custom @foo/bar   # 从任意目录指定工作区
+dsh-web-desktopify plugin add @morlay/session-persistence-rdb   # 工作区 pnpm add + bundles reconcile
+dsh-web-desktopify plugin add --workspace examples/custom @foo/bar   # 从任意目录指定工作区
 ```
 
 `plugin add` 复用 dev 的 DSH_HOME 布局（工作区 `.dsh-store/profiles/web`

@@ -1,4 +1,4 @@
-# deepseek-harness-desktop
+# dsh-web-desktopify
 
 把 [@deepseek-ai/dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) 的
 `--profile web` 与 `cordis.patch.yml` 打包为**独立自定义桌面**的 Go 单命令。
@@ -7,18 +7,18 @@
 ## Quick Start
 
 ```sh
-go install github.com/omdsh-dev/deepseek-harness-desktop/cmd/deepseek-harness-desktop@latest
+go install github.com/omdsh-dev/dsh-web-desktopify/cmd/dsh-web-desktopify@latest
 ```
 
 创建你的工作区（复制本仓库 [examples/custom](examples/custom) 即可起步），
 然后：
 
 ```sh
-deepseek-harness-desktop dev examples/custom        # 基于工作区起 dsh web 并打开浏览器
-deepseek-harness-desktop bundle examples/custom     # 打包当前平台的应用（基于工作区 hash 增量）
-deepseek-harness-desktop bundle --force examples/custom      # 忽略缓存，全新打包
-deepseek-harness-desktop bundle --install examples/custom    # 打包并安装到当前平台
-cd examples/custom && deepseek-harness-desktop plugin add @foo/bar   # 向工作区加插件（代理 dsh plugin add）
+dsh-web-desktopify dev examples/custom        # 基于工作区起 dsh web 并打开浏览器
+dsh-web-desktopify bundle examples/custom     # 打包当前平台的应用（基于工作区 hash 增量）
+dsh-web-desktopify bundle --force examples/custom      # 忽略缓存，全新打包
+dsh-web-desktopify bundle --install examples/custom    # 打包并安装到当前平台
+cd examples/custom && dsh-web-desktopify plugin add @foo/bar   # 向工作区加插件（代理 dsh plugin add）
 ```
 
 - `dev [<workspace>]` — 基于工作区直接起 `dsh web` 并打开浏览器页面
@@ -42,7 +42,7 @@ cd examples/custom && deepseek-harness-desktop plugin add @foo/bar   # 向工作
 dsh 验证（见 [docs/workspace.md](docs/workspace.md)）。
 
 构建依赖：`go`、`node`、`pnpm`（[mise.toml](mise.toml) 管理）。仓库内开发
-用 `go tool deepseek-harness-desktop`（go.mod `tool` 指令注册，无需
+用 `go tool dsh-web-desktopify`（go.mod `tool` 指令注册，无需
 `go build`）。
 
 - [docs/workspace.md](docs/workspace.md) — 工作区结构与「先验证，再打包」流程

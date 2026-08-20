@@ -1,4 +1,4 @@
-# 发布 cmd/deepseek-harness-desktop（纯 Go 单命令，goreleaser 交叉编译）：
+# 发布 cmd/dsh-web-desktopify（纯 Go 单命令，goreleaser 交叉编译）：
 #   - v* tag push → 固定版本 release（vX.Y.Z，正式版，自动成为 Latest；
 #     重复发布由 goreleaser replace_existing_artifacts 自动覆盖旧 asset）
 # 发布全部使用现成 action（goreleaser-action），不手写 git/gh 命令。

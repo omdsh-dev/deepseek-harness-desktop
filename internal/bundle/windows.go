@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/config"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/fsutil"
 )
 
 // assembleWindows 组装 Windows 应用 target/<name>/windows/<Name>/：

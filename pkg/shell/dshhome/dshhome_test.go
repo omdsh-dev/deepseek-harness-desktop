@@ -1,17 +1,19 @@
-package main
+package dshhome
 
 import (
-	"github.com/adrg/xdg"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/adrg/xdg"
+
+	"github.com/omdsh-dev/dsh-web-desktopify/pkg/shell/appconfig"
 )
 
-// TestResolveDSHHomeEnv：env 策略不设置 DSH_HOME。
-func TestResolveDSHHomeEnv(t *testing.T) {
-	cfg := defaultAppConfig()
+func TestResolveEnv(t *testing.T) {
+	cfg := appconfig.Default()
 	cfg.DSHHome = "env"
-	got, err := resolveDSHHome(cfg, "/tmp/exe")
+	got, err := Resolve(cfg, "/tmp/exe")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,12 +22,11 @@ func TestResolveDSHHomeEnv(t *testing.T) {
 	}
 }
 
-// TestResolveDSHHomeOverride：DSH_APP_DSH_HOME 优先于一切策略。
-func TestResolveDSHHomeOverride(t *testing.T) {
+func TestResolveOverride(t *testing.T) {
 	t.Setenv("DSH_APP_DSH_HOME", "/override/home")
-	cfg := defaultAppConfig()
+	cfg := appconfig.Default()
 	cfg.DSHHome = "xdg"
-	got, err := resolveDSHHome(cfg, "/tmp/exe")
+	got, err := Resolve(cfg, "/tmp/exe")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,10 +35,8 @@ func TestResolveDSHHomeOverride(t *testing.T) {
 	}
 }
 
-// TestResolveDSHHomeXdg：xdg 策略把种子内容拷贝到 XDG_DATA_HOME/<name>
-// （与 dev 的运行时 home 一致，不再加 dsh-home 子目录）；home 根的用户
-// 数据（种子里没有）不受 profile 落位影响。
-func TestResolveDSHHomeXdg(t *testing.T) {
+// xdg 策略把种子拷贝到 XDG_DATA_HOME/<name>；home 根的用户数据不受影响。
+func TestResolveXdg(t *testing.T) {
 	dataHome := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dataHome)
 	xdg.Reload() // xdg 包在 init 时固定路径，env 变更后需刷新
@@ -56,11 +55,11 @@ func TestResolveDSHHomeXdg(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := defaultAppConfig()
+	cfg := appconfig.Default()
 	cfg.Name = "dsh-test"
 	cfg.DSHHome = "xdg"
 	cfg.Profile = "web"
-	got, err := resolveDSHHome(cfg, filepath.Join(seedRoot, "bin"))
+	got, err := Resolve(cfg, filepath.Join(seedRoot, "bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +80,7 @@ func TestResolveDSHHomeXdg(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 二次启动：指纹一致，跳过覆盖。
-	if _, err := resolveDSHHome(cfg, filepath.Join(seedRoot, "bin")); err != nil {
+	if _, err := Resolve(cfg, filepath.Join(seedRoot, "bin")); err != nil {
 		t.Fatal(err)
 	}
 	if raw, err := os.ReadFile(userData); err != nil || string(raw) != "keep" {
@@ -89,8 +88,7 @@ func TestResolveDSHHomeXdg(t *testing.T) {
 	}
 }
 
-// TestResolveDSHHomeFixedPath：固定路径策略在 profile 缺失时从种子补齐。
-func TestResolveDSHHomeFixedPath(t *testing.T) {
+func TestResolveFixedPath(t *testing.T) {
 	seedRoot := t.TempDir()
 	seed := filepath.Join(seedRoot, "dsh-home")
 	if err := os.MkdirAll(filepath.Join(seed, "profiles", "web"), 0o755); err != nil {
@@ -101,10 +99,10 @@ func TestResolveDSHHomeFixedPath(t *testing.T) {
 	}
 
 	dst := filepath.Join(t.TempDir(), "home")
-	cfg := defaultAppConfig()
+	cfg := appconfig.Default()
 	cfg.Profile = "web"
 	cfg.DSHHome = dst
-	got, err := resolveDSHHome(cfg, filepath.Join(seedRoot, "bin"))
+	got, err := Resolve(cfg, filepath.Join(seedRoot, "bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,17 +114,14 @@ func TestResolveDSHHomeFixedPath(t *testing.T) {
 	}
 }
 
-// TestResolveDSHHomeBadPath：相对路径策略报错。
-func TestResolveDSHHomeBadPath(t *testing.T) {
-	cfg := defaultAppConfig()
+func TestResolveBadPath(t *testing.T) {
+	cfg := appconfig.Default()
 	cfg.DSHHome = "relative/path"
-	if _, err := resolveDSHHome(cfg, "/tmp/exe"); err == nil {
+	if _, err := Resolve(cfg, "/tmp/exe"); err == nil {
 		t.Fatal("相对路径应报错")
 	}
 }
 
-// TestEnsureSeedOverridesStaleEntity：指纹不一致的旧实体拷贝被种子强制
-// 覆盖（profile 定义随应用更新）。
 func TestEnsureSeedOverridesStaleEntity(t *testing.T) {
 	seedRoot := t.TempDir()
 	seed := filepath.Join(seedRoot, "dsh-home")
@@ -166,8 +161,6 @@ func TestEnsureSeedOverridesStaleEntity(t *testing.T) {
 	}
 }
 
-// TestEnsureSeedSkipsMatchingFingerprint：指纹一致时跳过覆盖（同一版本
-// 正常启动不重复复制闭包）。
 func TestEnsureSeedSkipsMatchingFingerprint(t *testing.T) {
 	seedRoot := t.TempDir()
 	seed := filepath.Join(seedRoot, "dsh-home")
@@ -203,9 +196,8 @@ func TestEnsureSeedSkipsMatchingFingerprint(t *testing.T) {
 	}
 }
 
-// TestEnsureSeedReplacesDevSymlink：dev 模式留下的 profiles/web 符号链接
-// （指向工作区）不是有效种子——app 启动应移除它并复制实体种子，使 app
-// 独立于工作区（工作区缺失不影响 app）。
+// dev 模式留下的 profiles/web 符号链接不是有效种子——app 启动应移除它并
+// 复制实体种子，使 app 独立于工作区。
 func TestEnsureSeedReplacesDevSymlink(t *testing.T) {
 	seedRoot := t.TempDir()
 	seed := filepath.Join(seedRoot, "dsh-home")
@@ -217,7 +209,6 @@ func TestEnsureSeedReplacesDevSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 模拟 dev 留下的 symlink：profiles/web → 外部工作区。
 	dst := filepath.Join(t.TempDir(), "home")
 	ws := filepath.Join(t.TempDir(), "workspace")
 	if err := os.MkdirAll(filepath.Join(dst, "profiles"), 0o755); err != nil {
@@ -230,17 +221,16 @@ func TestEnsureSeedReplacesDevSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := defaultAppConfig()
+	cfg := appconfig.Default()
 	cfg.Profile = "web"
 	cfg.DSHHome = dst
-	got, err := resolveDSHHome(cfg, filepath.Join(seedRoot, "bin"))
+	got, err := Resolve(cfg, filepath.Join(seedRoot, "bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != dst {
 		t.Fatalf("应返回固定路径 %q，得到 %q", dst, got)
 	}
-	// symlink 被实体目录替换，且不再指向工作区。
 	link := filepath.Join(dst, "profiles", "web")
 	info, err := os.Lstat(link)
 	if err != nil {

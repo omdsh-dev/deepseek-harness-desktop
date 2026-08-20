@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/config"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/fsutil"
 )
 
 // assembleLinux 组装 Linux 应用 target/<name>/linux/<Name>/：

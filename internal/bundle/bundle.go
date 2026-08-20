@@ -19,9 +19,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/gitignore"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/config"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/fsutil"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/gitignore"
 )
 
 // appConfig 与壳的 appconfig.json 结构一致（壳读取）。
@@ -40,8 +40,7 @@ type appConfig struct {
 }
 
 // seedSkip 是复制 DSH_HOME 种子时排除的名字（安装簿记、工程文件与运行时
-// 用户数据；basename 命中即跳过）。构建产物（如 target/）不在此列——由
-// 工作区 .gitignore 表达，遵循它排除（见 assembleLayout 的 seedIgnored）。
+// 用户数据；basename 命中即跳过）。
 var seedSkip = map[string]bool{
 	".nub-store":          true,
 	".store":              true,
@@ -50,13 +49,11 @@ var seedSkip = map[string]bool{
 	".npmrc":              true,
 	"pnpm-workspace.yaml": true,
 	"pnpm-lock.yaml":      true,
-	// 运行时用户数据不进种子：settings.yaml、storages/、sessions/ 等由
-	// 应用在目标 DSH_HOME 中生成。
+	// 运行时用户数据不进种子（由应用在目标 DSH_HOME 生成）。
 	"settings.yaml": true,
 	"storages":      true,
 	"sessions":      true,
-	// dev 运行时目录（工作区 .dsh-store）：不进种子——内含指向工作区
-	// 自身的符号链接，复制会递归。
+	// dev 运行时目录（工作区 .dsh-store）：内含指向工作区的符号链接，复制会递归。
 	".dsh-store": true,
 }
 
@@ -119,8 +116,7 @@ func assembleLayout(in Inputs, appRoot string) (string, error) {
 		return "", fmt.Errorf("write appconfig.json: %w", err)
 	}
 
-	// SEA 运行时资源：config/、node_modules/、package.json（从 staging 复制，
-	// dsh-server 从可执行文件上一级解析）。
+	// SEA 运行时资源：config/、node_modules/、package.json（从 staging 复制）。
 	staging := config.SeaDir(in.Workspace, in.Cfg)
 	for _, name := range []string{"config", "node_modules", "package.json"} {
 		src := filepath.Join(staging, name)
@@ -129,11 +125,8 @@ func assembleLayout(in Inputs, appRoot string) (string, error) {
 		}
 	}
 
-	// DSH_HOME 种子：工作区（profile 拍平内容）→ appRoot/dsh-home/profiles/web
-	// （解引用：pnpm 安装的 node_modules 是 store 链接）。dsh 运行时固定从
-	// $DSH_HOME/profiles/<name> 解析 profile。
-	// 种子遵循工作区 .gitignore：被忽略的条目（构建产物、缓存等）不进种子；
-	// node_modules 例外——SEA 运行时需要依赖闭包，虽被 git 忽略但必须保留。
+	// DSH_HOME 种子：工作区 → appRoot/dsh-home/profiles/web（解引用）。
+	// 遵循工作区 .gitignore；node_modules 例外（SEA 运行时需要依赖闭包）。
 	homeRoot := filepath.Join(appRoot, "dsh-home")
 	if err := os.MkdirAll(filepath.Join(homeRoot, "profiles"), 0o755); err != nil {
 		return "", err
@@ -144,8 +137,7 @@ func assembleLayout(in Inputs, appRoot string) (string, error) {
 	}
 	seedIgnored := func(rel string, isDir bool) bool {
 		if rel == "node_modules" || strings.HasPrefix(rel, "node_modules/") {
-			// node_modules 例外（gitignore 不忽略），但过滤与当前平台
-			// 无关的原生二进制（prebuilds 全平台目录、平台变体包）。
+			// node_modules 例外，但过滤与当前平台无关的原生二进制。
 			inner := strings.TrimPrefix(rel, "node_modules/")
 			return inner != "" && fsutil.NativeSkip(inner, isDir)
 		}
@@ -154,8 +146,7 @@ func assembleLayout(in Inputs, appRoot string) (string, error) {
 	if err := fsutil.CopyDirDeref(in.Workspace, filepath.Join(homeRoot, "profiles", config.ProfileName), seedSkip, seedIgnored); err != nil {
 		return "", fmt.Errorf("copy dsh-home seed: %w", err)
 	}
-	// 种子指纹：工作区内容 hash，壳启动时比对（一致跳过、不一致覆盖），
-	// 避免每次启动全量复制 node_modules 闭包。
+	// 种子指纹：工作区内容 hash，壳启动时比对，避免每次全量复制闭包。
 	if in.SeedHash != "" {
 		if err := os.WriteFile(filepath.Join(homeRoot, "profiles", config.ProfileName, ".seed-hash"), []byte(in.SeedHash), 0o644); err != nil {
 			return "", fmt.Errorf("write .seed-hash: %w", err)

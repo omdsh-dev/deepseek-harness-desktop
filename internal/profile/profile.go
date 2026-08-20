@@ -1,12 +1,6 @@
 // Package profile 管理工作区的依赖闭包（工作区根即 profile 内容）。
-//
-// 工作区根拍平存放 package.json（bundles + deps）、cordis.patch.yml
-// （patch 层）、pnpm-workspace.yaml 与 .npmrc（安装工程文件，随工作区
-// 提交）。用户可直接在工作区 pnpm install，依赖闭包落在工作区
-// node_modules；CLI 复用这份安装（SEA 闭包 / bundle 种子）。
-//
-// CLI 兜底：工程文件缺失时从内嵌模板生成（与官方推荐配置一致），保证
-// 闭包为扁平布局（SEA 打包直接复制）且原生模块构建脚本被放行。
+// 用户可直接在工作区 pnpm install，CLI 复用这份安装（SEA 闭包 / bundle
+// 种子）；工程文件缺失时从内嵌模板兜底生成。
 package profile
 
 import (
@@ -21,7 +15,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/pm"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/pm"
 )
 
 //go:embed all:templates
@@ -40,7 +34,7 @@ func Ensure(ws string, skipInstall bool) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("mkdir %s: %w", dir, err)
 	}
-	// 工程文件兜底：工作区通常已提交；缺失时从模板生成。
+	// 工程文件兜底：缺失时从模板生成。
 	entries, err := templates.ReadDir("templates")
 	if err != nil {
 		return "", fmt.Errorf("read embedded templates: %w", err)
@@ -73,8 +67,7 @@ func Ensure(ws string, skipInstall bool) (string, error) {
 	return dir, nil
 }
 
-// Install 在 profile 目录运行 pnpm install（与 dsh 官方一致；增量，
-// 已有安装时快速收敛）。
+// Install 在 profile 目录运行 pnpm install（增量，已有安装时快速收敛）。
 func Install(dir string, skip bool) error {
 	if skip {
 		return nil
@@ -113,9 +106,7 @@ func Version(profileDir string) (string, error) {
 }
 
 // ClosureFingerprint 返回闭包顶层包清单的稳定指纹（包名+版本排序后
-// 聚合 sha256）。nodeLinker=hoisted 下顶层即完整闭包，pnpm install 增删
-// 或升级包都会改变指纹。node_modules 缺失时返回空指纹（调用方按未安装
-// 处理，不误伤工程文件 hash）。
+// 聚合 sha256）。node_modules 缺失时返回空指纹。
 func ClosureFingerprint(profileDir string) (string, error) {
 	nmDir := filepath.Join(profileDir, "node_modules")
 	entries, err := os.ReadDir(nmDir)

@@ -7,8 +7,8 @@ import (
 	"runtime"
 
 	"github.com/adrg/xdg"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/config"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/fsutil"
 )
 
 // Install 把已打包的应用安装到当前平台：

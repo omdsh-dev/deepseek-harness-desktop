@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/config"
 )
 
 // TestTemplatePackageJSONLoads：模板 package.json（dev 在非工作区目录

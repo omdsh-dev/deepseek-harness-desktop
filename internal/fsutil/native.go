@@ -47,8 +47,7 @@ var nativePlatform = func() string {
 // 回调约定一致（目录命中即整体跳过）。
 func NativeSkip(rel string, isDir bool) bool {
 	segs := strings.Split(rel, "/")
-	// prebuilds/<platform>-<arch>/（任意包内，目录本身命中即跳过子树；
-	// 非平台名的散文件不误伤）。
+	// prebuilds/<platform>-<arch>/（目录命中即跳过子树）。
 	if isDir {
 		for i, s := range segs {
 			if s == "prebuilds" && i+1 == len(segs)-1 {

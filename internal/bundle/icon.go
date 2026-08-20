@@ -18,13 +18,8 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// 图标源格式：工作区提供 SVG（dsh.desktop.icon 引用，推荐）或位图 PNG，
-// 全部尺寸由 Go 的 image 库生成，不依赖任何外部渲染器：
-//   - SVG → oksvg + rasterx（纯 Go SVG 光栅化）渲染为 1024x1024 白底图；
-//   - PNG → image/png 解码；
-//   - 缩放 → golang.org/x/image/draw。
-//
-// macOS icns 用系统 iconutil 打包。
+// 图标源为工作区 SVG 或 PNG，全部尺寸由 Go 的 image 库生成（SVG 用
+// oksvg/rasterx 光栅化，缩放用 x/image/draw）。macOS icns 用系统 iconutil。
 
 // iconSize 是图标基准边长（各平台尺寸都由它缩放而来）。
 const iconSize = 1024
@@ -44,9 +39,8 @@ func loadIcon1024(in Inputs) ([]byte, error) {
 	}
 }
 
-// renderSVG1024 用 oksvg/rasterx（纯 Go）把 SVG 渲染为 1024x1024 白底
-// PNG。currentColor 预替换为黑色（oksvg 不解析该 CSS 值）；viewBox 等比
-// contain 居中（图标 viewBox 不一定是正方形）。
+// renderSVG1024 用 oksvg/rasterx 把 SVG 渲染为 1024x1024 白底 PNG。
+// currentColor 预替换为黑色（oksvg 不解析该 CSS 值）。
 func renderSVG1024(data []byte) ([]byte, error) {
 	svg := strings.ReplaceAll(string(data), `fill="currentColor"`, `fill="#000000"`)
 	icon, err := oksvg.ReadIconStream(bytes.NewReader([]byte(svg)), oksvg.WarnErrorMode)

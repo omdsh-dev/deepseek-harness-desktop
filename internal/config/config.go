@@ -1,18 +1,6 @@
-// Package config 解析工作区配置。
-//
-// 工作区（examples/ 下的目录）是**拍平**的 desktop 定义：desktop 只有
-// 一个 profile（web），profile 内容直接放在工作区根（无目录嵌套、无独立
-// 配置文件）：
-//
-//	package.json         name/version/dependencies（npm 语义，直接复用）
-//	                     + dsh.profile.bundles（cordis bundle 列表）
-//	                     + dsh.desktop（桌面特有：id/window/icon/dshHome）
-//	cordis.patch.yml     profile patch 层（dsh 应用在 bundle 层之后）
-//	pnpm-workspace.yaml  安装工程文件（nodeLinker hoisted + allowBuilds）
-//	.npmrc               registry 映射（@morlay → GitHub npm）与本地 store
-//
-// 工作区可直接 pnpm install（依赖闭包落在工作区 node_modules）；运行时由
-// CLI 装配为 dsh 的 DSH_HOME 布局（profiles/web ← 工作区）。
+// Package config 解析工作区配置。工作区是拍平的 desktop 定义：profile
+// 内容直接放在工作区根（package.json 含 dsh.profile.bundles 与
+// dsh.desktop，另有 cordis.patch.yml、pnpm-workspace.yaml、.npmrc）。
 package config
 
 import (
@@ -123,7 +111,7 @@ func Load(ws string) (*Config, error) {
 	return cfg, nil
 }
 
-// TargetDir 返回产物根 target/ 目录（位于工作区，非 desktop 源码树）。
+// TargetDir 返回产物根 target/ 目录（位于工作区）。
 func TargetDir(ws string) string {
 	return filepath.Join(ws, "target")
 }
@@ -138,9 +126,7 @@ func SeaDir(ws string, cfg *Config) string {
 	return filepath.Join(BuildDir(ws, cfg), "sea")
 }
 
-// DSHHomeDir 返回构建出的 DSH_HOME 种子目录（target/<name>/dsh-home）：
-// dev 模式在此构造 profiles/web（指向工作区），bundle 种子由此复制。运行时
-// DSH_HOME 由壳按 dshHome 策略解析（xdg 策略为 xdg.DataHome/<name>）。
+// DSHHomeDir 返回构建出的 DSH_HOME 种子目录（target/<name>/dsh-home）。
 func DSHHomeDir(ws string, cfg *Config) string {
 	return filepath.Join(BuildDir(ws, cfg), "dsh-home")
 }

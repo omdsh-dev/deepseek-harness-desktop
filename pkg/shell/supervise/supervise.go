@@ -1,12 +1,15 @@
-package main
+// Package supervise 守护 SEA 后端（dsh-server）进程：启动、把窗口指向其
+// URL、异常退出退避重启，直到上下文取消（应用退出）。
+package supervise
 
 import (
 	"context"
 	"log"
 	"time"
 
-	"github.com/omdsh-dev/deepseek-harness-desktop/server"
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"github.com/omdsh-dev/dsh-web-desktopify/pkg/shell/server"
 )
 
 // 重启退避的初值与上限。
@@ -15,9 +18,9 @@ const (
 	maxRestartWait = 30 * time.Second
 )
 
-// supervise 守护后端：启动 → 就绪后把窗口指向其 URL → 进程退出则退避重启，
-// 直到 ctx 取消（应用退出）。后端在任意时刻意外终结都会走同一重启路径。
-func supervise(ctx context.Context, exeDir, profile, port, dshHome string, win *application.WebviewWindow) {
+// Run 守护后端：启动 → 就绪后把窗口指向其 URL → 进程退出则退避重启，
+// 直到 ctx 取消（应用退出）。
+func Run(ctx context.Context, exeDir, profile, port, dshHome string, win *application.WebviewWindow) {
 	backoff := restartBackoff
 	for {
 		select {
@@ -37,10 +40,8 @@ func supervise(ctx context.Context, exeDir, profile, port, dshHome string, win *
 			log.Printf("dsh server ready at %s", url)
 			win.SetURL(url)
 
-			// 等待本次进程终结（或应用退出）。
 			select {
 			case <-ctx.Done():
-				// 应用退出：终止后端进程组并等待收口，不留孤儿 node。
 				p.Stop()
 				return
 			case exit := <-p.Exit():
@@ -52,7 +53,6 @@ func supervise(ctx context.Context, exeDir, profile, port, dshHome string, win *
 			}
 		}
 
-		// 退避等待后重启；应用退出则立即结束。
 		select {
 		case <-ctx.Done():
 			return

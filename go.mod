@@ -1,8 +1,8 @@
-module github.com/omdsh-dev/deepseek-harness-desktop
+module github.com/omdsh-dev/dsh-web-desktopify
 
 go 1.26.6
 
-tool github.com/omdsh-dev/deepseek-harness-desktop/cmd/deepseek-harness-desktop
+tool github.com/omdsh-dev/dsh-web-desktopify/cmd/dsh-web-desktopify
 
 require (
 	github.com/adrg/xdg v0.5.3
@@ -10,7 +10,7 @@ require (
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 	github.com/wailsapp/wails/v3 v3.0.0-beta.8
-	golang.org/x/image v0.41.0
+	golang.org/x/image v0.45.0
 	golang.org/x/sys v0.47.0
 )
 
@@ -21,6 +21,6 @@ require (
 	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/text v0.39.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )

@@ -1,8 +1,15 @@
-
-
 dep:
     pnpm install
 
 clean:
     rm -f pnpm-lock.yaml
     rm -rf node_modules/
+
+dev *args: dep
+    go tool dsh-web-desktopify dev . {{ args }}
+
+bundle *args:
+    go tool dsh-web-desktopify bundle . {{ args }}
+
+plugin *args:
+    go tool dsh-web-desktopify plugin {{ args }}

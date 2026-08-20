@@ -1,20 +1,5 @@
-// Package cli 实现 deepseek-harness-desktop 单命令：把工作区（examples/
-// 下的拍平 desktop 定义：package.json + cordis.patch.yml）打包为独立
-// 自定义桌面。
-//
-// 用法（go install 后任意目录，或仓库内 go tool）：
-//
-//	deepseek-harness-desktop dev <workspace>                  基于工作区起 dsh web 并打开浏览器
-//	deepseek-harness-desktop bundle --platform=os/arch <ws>  打包平台应用（默认本机平台）
-//	deepseek-harness-desktop plugin add <package...>         代理 dsh plugin add，修改工作区的 bundles
-//
-// 选项：
-//
-//	--skip-install   跳过依赖安装（使用已有安装）
-//	--workspace=<ws> plugin 目标工作区（缺省当前目录）
-//
-// 全部产物在仓库根 target/ 下（target/tools 工具链、target/<name>/ 各
-// desktop 的 profile 安装 / SEA / 应用包）。
+// Package cli 实现 dsh-web-desktopify 单命令：把工作区（examples/ 下的
+// 拍平 desktop 定义）打包为独立自定义桌面。用法见 usage。
 package cli
 
 import (
@@ -26,21 +11,21 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/bundle"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/fsutil"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/gitignore"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/profile"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/sea"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/bundle"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/config"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/fsutil"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/gitignore"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/profile"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/sea"
 )
 
-const usage = `deepseek-harness-desktop — 把 dsh 的 --profile web 与 cordis.patch.yml 打包为独立自定义桌面。
+const usage = `dsh-web-desktopify — 把 dsh 的 --profile web 与 cordis.patch.yml 打包为独立自定义桌面。
 
 用法（go install 后任意目录，或仓库内 go tool）：
-  deepseek-harness-desktop dev [<workspace>]                基于工作区起 dsh web 并打开浏览器
+  dsh-web-desktopify dev [<workspace>]                基于工作区起 dsh web 并打开浏览器
                                                              （缺省当前目录；非工作区目录自动从模板创建）
-  deepseek-harness-desktop bundle [--platform=os/arch] [--force] [--install] <workspace>
-  deepseek-harness-desktop plugin add [--workspace=<path>] <package...>
+  dsh-web-desktopify bundle [--platform=os/arch] [--force] [--install] <workspace>
+  dsh-web-desktopify plugin add [--workspace=<path>] <package...>
                                                             代理 dsh plugin add：在工作区跑 pnpm add，
                                                             并把声明 dsh.bundle 的依赖加入
                                                             dsh.profile.bundles（不安装到全局 DSH_HOME）
@@ -137,7 +122,7 @@ func Run(args []string) int {
 		return 0
 	case "bundle":
 		if len(rest) < 2 {
-			fmt.Fprintln(os.Stderr, "用法：deepseek-harness-desktop bundle [--platform=os/arch] <workspace>")
+			fmt.Fprintln(os.Stderr, "用法：dsh-web-desktopify bundle [--platform=os/arch] <workspace>")
 			return 2
 		}
 		if _, err := Bundle(rest[1], platform, force, install, skipInstall); err != nil {
@@ -147,7 +132,7 @@ func Run(args []string) int {
 		return 0
 	case "plugin":
 		if len(rest) < 2 || rest[1] != "add" {
-			fmt.Fprintln(os.Stderr, "用法：deepseek-harness-desktop plugin add [--workspace=<path>] <package...>")
+			fmt.Fprintln(os.Stderr, "用法：dsh-web-desktopify plugin add [--workspace=<path>] <package...>")
 			return 2
 		}
 		if profileName != "" && profileName != config.ProfileName {
@@ -156,7 +141,7 @@ func Run(args []string) int {
 		}
 		pkgs := rest[2:]
 		if len(pkgs) == 0 {
-			fmt.Fprintln(os.Stderr, "用法：deepseek-harness-desktop plugin add [--workspace=<path>] <package...>")
+			fmt.Fprintln(os.Stderr, "用法：dsh-web-desktopify plugin add [--workspace=<path>] <package...>")
 			return 2
 		}
 		ws := workspace
@@ -212,15 +197,11 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	}
 	hashIgnored := gi.Ignored
 
-	// CLI/壳源码指纹：代码变更（新二进制）后旧产物不再复用——旧产物
-	// 的壳与种子（如 .seed-hash）可能与新代码语义不一致。源码树不可用
-	// （go install 后脱离源码树 / CI 结构不完整）时回退二进制内嵌的 VCS
-	// revision；都不可用时返回空串（缓存不命中，每次全量构建）。
+	// CLI/壳源码指纹：代码变更后旧产物不再复用（见 toolFingerprint）。
 	tool := toolFingerprint(root)
 
-	// 构建缓存：工作区 dir hash + 闭包指纹 + 平台 + 工具指纹。产物位于
-	// 工作区 target/ 下。wsHash 同时作为 DSH_HOME 种子的 .seed-hash 指纹
-	// （壳启动时比对）。
+	// 构建缓存：工作区 hash + 闭包指纹 + 平台 + 工具指纹。wsHash 同时作为
+	// DSH_HOME 种子的 .seed-hash 指纹。
 	statePath := filepath.Join(config.BuildDir(ws, cfg), ".build-state.json")
 	wsHash := ""
 	if !force {
@@ -261,7 +242,7 @@ func Bundle(ws, platform string, force, install, skipInstall bool) (string, erro
 	}
 	fmt.Printf("==> SEA 后端: %s\n", seaExe)
 
-	// 2) 壳二进制（构建输入由 shellsrc 内嵌，脱离源码树）。
+	// 2) 壳二进制（构建输入由 pkg/shell 内嵌，脱离源码树）。
 	shellBin, err := buildShell(ws, cfg)
 	if err != nil {
 		return "", err
@@ -305,13 +286,11 @@ type buildState struct {
 }
 
 // toolFingerprint 返回构建工具指纹，用于构建缓存失效：CLI/壳代码变更
-// 后旧产物不再复用。优先源码树 hash（internal/ + cmd/ + server/，仓库
-// 内开发场景）；源码树不可用（go install 后脱离源码树、CI 结构不完整）
-// 时回退二进制内嵌的 VCS revision；都不可用时返回空串（缓存不命中，
-// 每次全量构建，保证产物正确）。
+// 后旧产物不再复用。优先源码树 hash（internal/ + cmd/ + pkg/shell/）；
+// 源码树不可用时回退二进制内嵌的 VCS revision；都不可用时返回空串。
 func toolFingerprint(root string) string {
 	var parts []string
-	for _, dir := range []string{"internal", "cmd", "server"} {
+	for _, dir := range []string{"internal", "cmd", "pkg/shell"} {
 		h, err := fsutil.DirHash(filepath.Join(root, dir), hashSkip, nil)
 		if err != nil {
 			parts = nil
@@ -340,10 +319,7 @@ func toolFingerprint(root string) string {
 }
 
 // workspaceHash 计算工作区构建缓存指纹：工程文件 dir hash + 闭包顶层包
-// 清单指纹。node_modules 不在 dir hash 内（体积与稳定性），pnpm install
-// 导致的闭包变化（增删/升级包）单独纳入指纹，避免复用与当前闭包不一致
-// 的旧产物——SEA 闭包缺包时 tsdown 把解析不到的依赖留作裸导入，产物
-// 启动即崩（ERR_UNKNOWN_BUILTIN_MODULE）。
+// 清单指纹（node_modules 变化单独纳入，避免复用与当前闭包不一致的旧产物）。
 func workspaceHash(ws string, hashSkip map[string]bool, hashIgnored func(rel string, isDir bool) bool) (string, error) {
 	h, err := fsutil.DirHash(ws, hashSkip, hashIgnored)
 	if err != nil {
@@ -357,17 +333,14 @@ func workspaceHash(ws string, hashSkip map[string]bool, hashIgnored func(rel str
 }
 
 // hashSkip 是工作区 dir hash 排除的名字（安装簿记与运行时生成物；
-// pnpm-lock.yaml 锁定依赖闭包，必须参与 hash）。构建产物（如 target/）
-// 不在此列——由工作区 .gitignore 表达，hash 遵循它排除（见 Bundle）。
-// node_modules 由 workspaceHash 以闭包指纹单独纳入。
+// pnpm-lock.yaml 锁定依赖闭包，必须参与 hash）。
 var hashSkip = map[string]bool{
 	".git":         true,
 	"node_modules": true,
 	".store":       true,
 	".DS_Store":    true,
 	"cordis.yml":   true,
-	// dev 运行时目录（工作区本地临时 DSH_HOME，每次 dev 重建）：内容随
-	// dev 会话变化，不参与 bundle 增量缓存。
+	// dev 运行时目录（每次 dev 重建），不参与 bundle 增量缓存。
 	".dsh-store": true,
 }
 
@@ -376,17 +349,9 @@ func platformName() string {
 	return runtime.GOOS + "/" + runtime.GOARCH
 }
 
-// Dev 基于工作区直接起一个 dsh web 并打开浏览器页面（不组装桌面应用，
-// 无 Wails 壳）。等价于官方流程：
-//
-//	DSH_HOME=<ws>/.dsh-store dsh web --patch <ws>/cordis.patch.yml
-//
-// 实现：DSH_HOME 为工作区本地临时目录 <ws>/.dsh-store（每次 dev 重建，
-// 不污染打包应用使用的全局 XDG 数据目录），$DSH_HOME/profiles/web 符号
-// 链接指向工作区——dsh 直接从工作区读 package.json（bundles）与
-// cordis.patch.yml（patch 层），工作区的 pnpm install 结果直接可见。
-// 目录还不是工作区（缺 package.json）时从内嵌模板兜底创建工程文件并
-// 安装依赖（dev 可在任意目录起步）。
+// Dev 基于工作区直接起一个 dsh web 并打开浏览器页面（不组装桌面应用）。
+// DSH_HOME 为工作区本地临时目录 .dsh-store，profiles/web 符号链接指向
+// 工作区；目录还不是工作区时从模板兜底创建工程文件并安装依赖。
 func Dev(ws string, skipInstall bool) error {
 	_, ws, err := resolveWorkspace(ws)
 	if err != nil {
@@ -394,8 +359,7 @@ func Dev(ws string, skipInstall bool) error {
 	}
 
 	if _, err := config.Load(ws); err != nil {
-		// 当前目录还不是工作区：从模板兜底创建工程文件并安装依赖，
-		// 然后重新解析（已有文件不覆盖）。
+		// 当前目录还不是工作区：从模板兜底创建工程文件并安装依赖。
 		fmt.Printf("==> %s 不是工作区，从模板创建工程文件\n", ws)
 		if _, err := profile.Ensure(ws, skipInstall); err != nil {
 			return err
@@ -413,9 +377,8 @@ func Dev(ws string, skipInstall bool) error {
 		return err
 	}
 
-	// 2) 构造 dev 运行时 DSH_HOME：工作区本地临时目录 .dsh-store（每次
-	//    全新重建），profiles/web → 工作区。不触碰全局 XDG 数据目录——
-	//    那是打包应用（xdg 策略）的数据目录。
+	// 2) 构造 dev 运行时 DSH_HOME：工作区 .dsh-store（每次全新重建），
+	//    profiles/web → 工作区。
 	homeDir, err := ensureDevHome(ws, true)
 	if err != nil {
 		return err
@@ -441,8 +404,6 @@ func Dev(ws string, skipInstall bool) error {
 }
 
 // loadWorkspace 解析工作区并返回（仓库根, 绝对工作区路径, 配置）。
-// `examples/<name>` 形式始终解析到仓库根的 examples/ 目录；其余路径按
-// 当前目录解析。
 func loadWorkspace(ws string) (string, string, *config.Config, error) {
 	root, ws, err := resolveWorkspace(ws)
 	if err != nil {
@@ -455,8 +416,7 @@ func loadWorkspace(ws string) (string, string, *config.Config, error) {
 	return root, ws, cfg, nil
 }
 
-// resolveWorkspace 只解析工作区绝对路径（不要求已是工作区）：返回
-// （仓库根, 绝对路径）。
+// resolveWorkspace 只解析工作区绝对路径（不要求已是工作区）。
 func resolveWorkspace(ws string) (string, string, error) {
 	root, err := repoRoot()
 	if err != nil {
@@ -471,8 +431,8 @@ func resolveWorkspace(ws string) (string, string, error) {
 	return root, ws, err
 }
 
-// repoRoot 返回仓库根（internal/cli 源文件上三级；go run / 源码树构建
-// 均有效）。DSH_DESKTOP_ROOT 环境变量可显式覆盖（go install 后使用）。
+// repoRoot 返回仓库根（internal/cli 源文件上三级）。DSH_DESKTOP_ROOT
+// 可显式覆盖（go install 后使用）。
 func repoRoot() (string, error) {
 	if v := os.Getenv("DSH_DESKTOP_ROOT"); v != "" {
 		return v, nil

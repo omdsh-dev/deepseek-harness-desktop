@@ -24,8 +24,8 @@ const (
 	createNoWindow        = 0x08000000
 )
 
-// command 构造 spawn dsh-server 的命令。Windows 无用户 shell rc 概念，
-// 直接 exec；Job Object 关联由 attachToJob 在 Start 成功后完成。
+// command 构造 spawn dsh-server 的命令。Windows 无用户 shell rc 概念，直接
+// exec；Job Object 关联由 attachToJob 在 Start 成功后完成。
 func command(exeDir, profile, port, dshHome string) *exec.Cmd {
 	server := filepath.Join(exeDir, Name)
 	cmd := exec.Command(server, "--profile", profile, "--port", port)
@@ -40,9 +40,8 @@ func command(exeDir, profile, port, dshHome string) *exec.Cmd {
 }
 
 // attachToJob 把 dsh-server 放入 Job Object（KILL_ON_JOB_CLOSE）：壳退出
-// （含异常退出、句柄随进程关闭）时作业树整体终止，后端及其 spawn 的子进程
-// 一并清理，不留孤儿 node。句柄保存在 p.job，由 Process.done 释放；
-// requestStop/forceStop 用同一句柄显式终止。
+// （含异常退出、句柄随进程关闭）时作业树整体终止，后端及其子进程一并清理，
+// 不留孤儿 node。句柄保存在 p.job，由 Process.done 释放。
 func attachToJob(p *Process) error {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
@@ -79,8 +78,8 @@ func attachToJob(p *Process) error {
 	return nil
 }
 
-// terminateJob 终止 Job Object 内全部进程（Windows 无 POSIX 信号，SEA
-// node 收不到优雅 SIGTERM，直接强杀全树）。
+// terminateJob 终止 Job Object 内全部进程（Windows 无 POSIX 信号，SEA node
+// 收不到优雅 SIGTERM，直接强杀全树）。
 func terminateJob(p *Process) {
 	if p.job == 0 || p.cmd.Process == nil {
 		return

@@ -1,12 +1,6 @@
-// Package tools 管理构建工具链（工作区 target/tools/）。
-//
-// 工作区是拍平的 desktop 定义，不提交任何 npm 清单；构建工具（tsdown
-// 打包 SEA）按需安装到工作区 target/tools（pnpm install，构建目录本地
-// store），与工作区依赖解耦。target/ 统一承载全部产物，无其他临时目录。
-// 图标渲染不依赖工具链：由 internal/bundle 用 Go 的 image 库直接处理图标源。
-//
-// 工具链的工程文件模板（package.json / .npmrc / pnpm-workspace.yaml）以
-// go:embed 内嵌在 templates/ 下。
+// Package tools 管理构建工具链（工作区 target/tools/）。构建工具（tsdown
+// 打包 SEA）按需安装到工作区 target/tools，与工作区依赖解耦。工程文件
+// 模板以 go:embed 内嵌在 templates/ 下。
 package tools
 
 import (
@@ -16,7 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/pm"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/pm"
 )
 
 //go:embed all:templates

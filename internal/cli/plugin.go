@@ -1,12 +1,7 @@
-// `plugin add` 子命令：代理 dsh 的 plugin add，但不安装到全局
-// DSH_HOME，而是修改工作区（bundle workspace）的 dsh.profile.bundles。
-//
-// 复用 dev 的运行时布局：DSH_HOME 为工作区本地临时目录 .dsh-store，
-// $DSH_HOME/profiles/web 符号链接指向工作区；随后调用工作区闭包里的
-// `dsh plugin --profile web add <pkg...>`——dsh 在工作区跑 pnpm add，
-// 成功后在 package.json 里 reconcile dsh.profile.bundles（依赖中声明
-// dsh.bundle.patch 的包自动入层，被移除/失去声明的包出层），全程不触碰
-// 全局 DSH_HOME。
+// `plugin add` 子命令：代理 dsh 的 plugin add，但不安装到全局 DSH_HOME，
+// 而是修改工作区的 dsh.profile.bundles。复用 dev 的运行时布局
+// （.dsh-store + profiles/web → 工作区），调用工作区闭包里的
+// `dsh plugin --profile web add <pkg...>` 完成 pnpm add 与 bundles reconcile。
 package cli
 
 import (
@@ -16,21 +11,20 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/config"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/pm"
-	"github.com/omdsh-dev/deepseek-harness-desktop/internal/profile"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/config"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/pm"
+	"github.com/omdsh-dev/dsh-web-desktopify/internal/profile"
 )
 
 // PluginAdd 代理 `dsh plugin --profile web add <pkg...>`，目标为工作区。
-// pnpm add 与 bundles reconcile 均由工作区闭包里的 dsh 完成（与官方
-// 流程一致），本命令只负责 DSH_HOME 布局与进程调用。
+// pnpm add 与 bundles reconcile 由工作区闭包里的 dsh 完成。
 func PluginAdd(ws string, pkgs []string, skipInstall bool) error {
 	_, ws, _, err := loadWorkspace(ws)
 	if err != nil {
 		return err
 	}
 	if len(pkgs) == 0 {
-		return fmt.Errorf("缺插件包名；用法：deepseek-harness-desktop plugin add [--workspace=<path>] <package...>")
+		return fmt.Errorf("缺插件包名；用法：dsh-web-desktopify plugin add [--workspace=<path>] <package...>")
 	}
 
 	// 1) 工程文件兜底 + 未安装时 pnpm install（复用工作区已有安装）。
@@ -40,7 +34,6 @@ func PluginAdd(ws string, pkgs []string, skipInstall bool) error {
 
 	// 2) 构造 dev 运行时 DSH_HOME（与 dev 一致）：工作区 .dsh-store，
 	//    profiles/web → 工作区（只补缺失，不重建——dev 可能正在运行）。
-	//    dsh 的 plugin 命令在此布局下操作工作区。
 	homeDir, err := ensureDevHome(ws, false)
 	if err != nil {
 		return err
@@ -56,8 +49,7 @@ func PluginAdd(ws string, pkgs []string, skipInstall bool) error {
 	args := append([]string{"plugin", "--profile", config.ProfileName, "add"}, pkgs...)
 	cmd := exec.Command(dshBin, args...)
 	cmd.Env = withEnv(os.Environ(), "DSH_HOME", homeDir)
-	// dsh 内部用 PATH 上的 pnpm 跑 add：优先放入真实 pnpm（mise 安装），
-	// 避免命中 nub shim（配置语义不一致，见 internal/pm）。
+	// dsh 内部用 PATH 上的 pnpm 跑 add：优先放入真实 pnpm，避免命中 nub shim。
 	if bin, err := pm.Bin(); err == nil {
 		cmd.Env = prependPath(cmd.Env, filepath.Dir(bin))
 	}
@@ -75,8 +67,8 @@ func PluginAdd(ws string, pkgs []string, skipInstall bool) error {
 	return nil
 }
 
-// ensureProfileLink 确保 profiles/web 符号链接指向工作区：不存在则创建；
-// 已存在但指向别处时拒绝（避免把插件装进别的目录）。
+// ensureProfileLink 确保 profiles/web 符号链接指向工作区：不存在则创建，
+// 已存在但指向别处时拒绝。
 func ensureProfileLink(link, ws string) error {
 	info, err := os.Lstat(link)
 	switch {
@@ -106,8 +98,7 @@ func ensureProfileLink(link, ws string) error {
 	}
 }
 
-// withEnv 返回 env 的副本，其中 key 的值替换为 value（先移除旧条目再
-// 追加，保证生效——父进程环境里可能已有同名变量，如 DSH_HOME）。
+// withEnv 返回 env 的副本，其中 key 的值替换为 value（先移除旧条目再追加）。
 func withEnv(env []string, key, value string) []string {
 	out := make([]string, 0, len(env)+1)
 	prefix := key + "="
@@ -119,8 +110,7 @@ func withEnv(env []string, key, value string) []string {
 	return append(out, prefix+value)
 }
 
-// prependPath 返回 env 的副本，把 dir 放到 PATH 最前（供 dsh 调起的
-// pnpm 解析到真实二进制）。
+// prependPath 返回 env 的副本，把 dir 放到 PATH 最前。
 func prependPath(env []string, dir string) []string {
 	old := ""
 	out := make([]string, 0, len(env)+1)

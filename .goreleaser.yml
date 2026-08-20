@@ -1,22 +1,19 @@
-# 发布 cmd/deepseek-harness-desktop（纯 Go 单命令）到 GitHub Releases。
+# 发布 cmd/dsh-web-desktopify（纯 Go 单命令）到 GitHub Releases。
 # 发布物是 CLI 二进制：无 cgo 依赖，CGO_ENABLED=0 可全平台交叉编译，
 # 因此由 goreleaser 单 runner 构建 + 打包 + 发布。
 #   - v* tag → goreleaser release（固定版本，正式 release）
 version: 2
 
-project_name: deepseek-harness-desktop
+project_name: dsh-web-desktopify
 
-# 发布前把壳源码（internal/shell 与 server/）与精简 go.mod 同步到 CLI 的
-# embed 副本（internal/cli/shellsrc/_src，见 scripts/sync-shellsrc.sh）：
-# CLI 二进制在运行时用它解出并 go build 壳，必须包含当前源码与依赖。
-before:
-  hooks:
-    - bash scripts/sync-shellsrc.sh
+# 壳源码在 pkg/shell（主模块内嵌，见 pkg/shell/embed.go），与 CLI 同源，
+# 无需发布前同步内嵌副本。CLI 运行时从二进制内嵌解出壳源码并动态生成
+# go.mod 后 go build，因此 CLI 二进制必须包含当前壳源码与依赖。
 
 builds:
   - id: cli
-    main: ./cmd/deepseek-harness-desktop
-    binary: deepseek-harness-desktop
+    main: ./cmd/dsh-web-desktopify
+    binary: dsh-web-desktopify
     env:
       - CGO_ENABLED=0
     goos:
@@ -43,7 +40,7 @@ checksum:
 release:
   github:
     owner: omdsh-dev
-    name: deepseek-harness-desktop
+    name: dsh-web-desktopify
   # vX.Y.Z 无预发布后缀 → 正式 release；vX.Y.Z-rc.N 自动为 pre-release。
   prerelease: auto
   # 同一 tag 重复发布时，goreleaser 自动删除同名旧 asset 后重传。

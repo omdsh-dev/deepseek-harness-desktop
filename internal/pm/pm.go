@@ -1,8 +1,5 @@
-// Package pm 提供包管理器 pnpm 的命令构造。
-//
-// 直接使用 PATH 上的 pnpm，不假设 mise/nub 等特定版本管理器：pnpm
-// 的配置（.npmrc、pnpm-workspace.yaml 的 allowBuilds 等）由 pnpm 自身
-// 解析，与调用方无关；版本选择由 PATH 上的 pnpm（或它的 shim）负责。
+// Package pm 提供包管理器 pnpm 的命令构造。直接使用 PATH 上的 pnpm，
+// 不假设 mise/nub 等特定版本管理器。
 package pm
 
 import (

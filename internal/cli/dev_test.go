@@ -13,7 +13,7 @@ import (
 // 空串）。
 func TestToolFingerprint(t *testing.T) {
 	root := t.TempDir()
-	for _, dir := range []string{"internal", "cmd", "server"} {
+	for _, dir := range []string{"internal", "cmd", "pkg/shell"} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
 			t.Fatal(err)
 		}

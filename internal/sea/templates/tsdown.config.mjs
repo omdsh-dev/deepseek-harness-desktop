@@ -1,4 +1,4 @@
-// dsh SEA 打包配置（由 deepseek-harness-desktop CLI 生成）。
+// dsh SEA 打包配置（由 dsh-web-desktopify CLI 生成）。
 // 薄入口：只打包 sea-entry.mjs 自身（node: builtin 导入），dsh CLI 与
 // 依赖树一律不内联——运行时经闭包内 dsh-bridge 从可执行文件旁的
 // node_modules（扁平闭包）走正常 Node 解析。闭包即本目录 node_modules，
