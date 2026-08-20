@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@morlay/better-session": "^0.0.9"
+    "@morlay/better-session": "^0.0.9",
+    "@morlay/dsh-llm-openai-compatible": "^0.0.1"
   },
   "devDependencies": {
     "@deepseek-ai/dsh": "0.1.0-rc.8"
@@ -13,7 +14,8 @@
       "bundles": [
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-web-app",
-        "@morlay/better-session"
+        "@morlay/better-session",
+        "@morlay/dsh-llm-openai-compatible"
       ]
     },
     "desktop": {
