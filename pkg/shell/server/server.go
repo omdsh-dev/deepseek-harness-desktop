@@ -46,6 +46,14 @@ func (p *Process) Exit() <-chan Exit {
 	return p.exitCh
 }
 
+// Pid 返回后端进程 ID（Unix 上即其进程组 ID，用于孤儿清扫时整组终止）。
+func (p *Process) Pid() int {
+	if p.cmd == nil || p.cmd.Process == nil {
+		return 0
+	}
+	return p.cmd.Process.Pid
+}
+
 // done 释放平台资源（幂等；进程终结后调用）。
 func (p *Process) done() {
 	if p.cleanup != nil {

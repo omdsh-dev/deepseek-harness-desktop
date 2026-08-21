@@ -26,13 +26,25 @@ func TestShellBuildE2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("读 go.mod: %v", err)
 	}
-	if !strings.HasPrefix(string(gomod), "module github.com/omdsh-dev/dsh-web-desktopify/pkg/shell") {
-		t.Fatalf("go.mod 模块名错误: %s", gomod)
+	// 外层模块：独立标识 + replace 指回内层子模块。
+	if !strings.HasPrefix(string(gomod), "module dsh-shell") {
+		t.Fatalf("外层 go.mod 模块名错误: %s", gomod)
 	}
-	if !strings.Contains(string(gomod), "wailsapp/wails/v3") {
-		t.Fatalf("go.mod 应含 wails 依赖")
+	if !strings.Contains(string(gomod), "replace github.com/omdsh-dev/dsh-web-desktopify => ./pkg/shell") {
+		t.Fatalf("外层 go.mod 应含 replace: %s", gomod)
 	}
-	if !dirExists(filepath.Join(srcDir, "cmd")) {
+	// 内层子模块：module 名即仓库路径，绑定 FQN 稳定。
+	innerGomod, err := os.ReadFile(filepath.Join(srcDir, "pkg", "shell", "go.mod"))
+	if err != nil {
+		t.Fatalf("读内层 go.mod: %v", err)
+	}
+	if !strings.HasPrefix(string(innerGomod), "module github.com/omdsh-dev/dsh-web-desktopify") {
+		t.Fatalf("内层 go.mod 模块名错误: %s", innerGomod)
+	}
+	if !strings.Contains(string(innerGomod), "wailsapp/wails/v3") {
+		t.Fatalf("内层 go.mod 应含 wails 依赖")
+	}
+	if !dirExists(filepath.Join(srcDir, "pkg", "shell", "pkg", "shell", "cmd")) {
 		t.Fatal("解出的源码应有 cmd/ 目录")
 	}
 }

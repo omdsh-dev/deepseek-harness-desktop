@@ -23,6 +23,8 @@ import (
 
 	"github.com/omdsh-dev/dsh-web-desktopify/pkg/shell/appconfig"
 	"github.com/omdsh-dev/dsh-web-desktopify/pkg/shell/dshhome"
+	"github.com/omdsh-dev/dsh-web-desktopify/pkg/shell/gateway"
+	"github.com/omdsh-dev/dsh-web-desktopify/pkg/shell/sharedstore"
 	"github.com/omdsh-dev/dsh-web-desktopify/pkg/shell/supervise"
 )
 
@@ -64,9 +66,30 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// 共享 localStorage 层：内存快照 + DSH_HOME/storages 原子落盘，绑定为
+	// wails service，bridge 经 js-bridge（Call.ByName）把 localStorage 读写
+	// 转接到这里。
+	store := sharedstore.New(dshHome)
+	store.Load()
+
+	// 网关：/wails/* 给 wails（runtime.js 伺服 + IPC），其他反代到 dsh 后端，
+	// index.html 注入 runtime.js 与 bridge。Transport 把 wails 的
+	// MessageProcessor 交给网关处理 IPC。
+	gw, err := gateway.Start("127.0.0.1:1", ctx)
+	if err != nil {
+		log.Fatalf("启动网关: %v", err)
+	}
+	// bridge 种子：注入页面时内嵌共享存储当前状态，页面启动即可同步读到
+	// 上次会话写入的值（dsh.sessions.current），读取不依赖异步 wails IPC。
+	gw.SetSeedProvider(store.Snapshot)
+
 	app := application.New(application.Options{
 		Name:        cfg.Name,
 		Description: cfg.Name + " Desktop",
+		Transport:   gateway.NewTransport(gw),
+		Services: []application.Service{
+			application.NewService(store),
+		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
@@ -122,7 +145,9 @@ func main() {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		supervise.Run(ctx, exeDir, cfg.Profile, port, dshHome, win)
+		// 网关只有上面这一个实例（wails 的 assetserver/IPC 已注入它），
+		// supervise 用它 SetTarget/SetURL，保证窗口加载的网关必然接线。
+		supervise.Run(ctx, exeDir, cfg.Profile, port, dshHome, win, gw)
 	}()
 
 	// 信号若在 app.Run() 之前到达（启动瞬间被 kill）：supervise 已收口，直接退出。

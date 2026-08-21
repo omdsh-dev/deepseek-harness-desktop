@@ -6,5 +6,5 @@ package shell
 
 import "embed"
 
-//go:embed all:appconfig all:dshhome all:server all:supervise all:cmd
+//go:embed all:appconfig all:dshhome all:server all:supervise all:sharedstore all:gateway all:cmd
 var FS embed.FS

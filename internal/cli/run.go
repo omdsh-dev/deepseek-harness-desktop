@@ -31,7 +31,9 @@ func buildShell(ws string, cfg *config.Config) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	cmd := exec.Command("go", "build", "-o", out, "./cmd")
+	// 用完整 import 路径构建：外层模块经 replace 把仓库路径解析到内层
+	// 子模块 pkg/shell/，cmd 包即 github.com/omdsh-dev/dsh-web-desktopify/pkg/shell/cmd。
+	cmd := exec.Command("go", "build", "-o", out, "github.com/omdsh-dev/dsh-web-desktopify/pkg/shell/cmd")
 	cmd.Dir = srcDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -74,14 +76,27 @@ func setEnv(env []string, kvs ...string) []string {
 // materializeShellSrc 把内嵌的壳构建输入（shell.FS）解出为临时模块根
 // （target/<name>/.shell-src/）并动态写入 go.mod，返回该根目录。每次全量
 // 重写，保证与二进制内嵌内容一致。
+//
+// 模块布局：外层 module dsh-shell，内层子模块 pkg/shell/ 声明
+// module github.com/omdsh-dev/dsh-web-desktopify，外层经 replace 指回——
+// 壳源码的 import 解析为本地子目录，且绑定 FQN（PkgPath.TypeName.Method）
+// 稳定为 github.com/omdsh-dev/dsh-web-desktopify/pkg/shell/...。
 func materializeShellSrc(ws string, cfg *config.Config) (string, error) {
 	srcDir := filepath.Join(config.BuildDir(ws, cfg), ".shell-src")
 	if err := os.RemoveAll(srcDir); err != nil {
 		return "", err
 	}
-	// shell.FS 根即模块内容，整体解出。
-	if err := writeEmbedDir(shell.FS, ".", srcDir); err != nil {
+	// 布局：外层模块根 srcDir/（go.mod: module dsh-shell），内层子模块根
+	// srcDir/pkg/shell/（go.mod: module github.com/omdsh-dev/dsh-web-desktopify），
+	// shell.FS 内容解出到 srcDir/pkg/shell/pkg/shell/——包路径保持
+	// github.com/omdsh-dev/dsh-web-desktopify/pkg/shell/...，与绑定 FQN 一致。
+	inner := filepath.Join(srcDir, "pkg", "shell", "pkg", "shell")
+	if err := writeEmbedDir(shell.FS, ".", inner); err != nil {
 		return "", fmt.Errorf("解出壳源码: %w", err)
+	}
+	innerRoot := filepath.Join(srcDir, "pkg", "shell")
+	if err := os.WriteFile(filepath.Join(innerRoot, "go.mod"), []byte(shellInnerGoMod()), 0o644); err != nil {
+		return "", fmt.Errorf("写壳内层 go.mod: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(srcDir, "go.mod"), []byte(shellGoMod()), 0o644); err != nil {
 		return "", fmt.Errorf("写壳 go.mod: %w", err)
@@ -89,17 +104,28 @@ func materializeShellSrc(ws string, cfg *config.Config) (string, error) {
 	return srcDir, nil
 }
 
-// shellGoMod 返回壳模块的 go.mod 内容。module 名设为壳源码根包
-// github.com/omdsh-dev/dsh-web-desktopify/pkg/shell，使 pkg/shell/... 的
-// import 在解出的壳模块中解析为本地子目录。go 版本行跟随当前工具链。
+// shellGoMod 返回壳外层模块的 go.mod：module dsh-shell，仓库路径经 replace
+// 指回内层子模块 pkg/shell/。
 func shellGoMod() string {
-	return "module github.com/omdsh-dev/dsh-web-desktopify/pkg/shell\n" +
+	return "module dsh-shell\n" +
+		"\n" +
+		"go " + strings.TrimPrefix(runtime.Version(), "go") + "\n" +
+		"\n" +
+		"require github.com/omdsh-dev/dsh-web-desktopify v0.0.0\n" +
+		"\n" +
+		"replace github.com/omdsh-dev/dsh-web-desktopify => ./pkg/shell\n"
+}
+
+// shellInnerGoMod 返回壳内层子模块（pkg/shell/）的 go.mod：module 名即仓库
+// 路径，使绑定 FQN 稳定；依赖与主模块一致。
+func shellInnerGoMod() string {
+	return "module github.com/omdsh-dev/dsh-web-desktopify\n" +
 		"\n" +
 		"go " + strings.TrimPrefix(runtime.Version(), "go") + "\n" +
 		"\n" +
 		"require (\n" +
 		"\tgithub.com/adrg/xdg v0.5.3\n" +
-		"\tgithub.com/wailsapp/wails/v3 v3.0.0-beta.8\n" +
+		"\tgithub.com/wailsapp/wails/v3 v3.0.0-beta.11\n" +
 		"\tgolang.org/x/sys v0.47.0\n" +
 		")\n"
 }
