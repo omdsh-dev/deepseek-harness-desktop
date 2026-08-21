@@ -83,8 +83,8 @@ func runWeb(dshBin, homeDir string) (string, error) {
 				return // EOF（dsh 退出）或读错误
 			}
 			fmt.Print(line)
-			if strings.HasPrefix(line, "dsh web: ") {
-				urlCh <- strings.TrimSpace(strings.TrimPrefix(line, "dsh web: "))
+			if after, ok := strings.CutPrefix(line, "dsh web: "); ok {
+				urlCh <- strings.TrimSpace(after)
 			}
 		}
 	}()

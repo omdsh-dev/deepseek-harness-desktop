@@ -68,8 +68,8 @@ func NativeSkip(rel string, isDir bool) bool {
 		head := strings.TrimPrefix(base, fam+"-")
 		// 去掉编译器后缀（-gnu/-musl/-msvc 等），剩 <plat>-<arch>。
 		for _, extra := range []string{"-gnu", "-musl", "-msvc"} {
-			if strings.HasSuffix(head, extra) {
-				head = strings.TrimSuffix(head, extra)
+			if before, ok := strings.CutSuffix(head, extra); ok {
+				head = before
 				break
 			}
 		}

@@ -150,7 +150,7 @@ func copyDeref(src, dst string) error {
 // ENOTEMPTY（目录项删除的瞬态竞争），重试可自愈。
 func RemoveAll(path string) error {
 	var err error
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		err = os.RemoveAll(path)
 		if err == nil {
 			return nil

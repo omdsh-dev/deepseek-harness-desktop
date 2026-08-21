@@ -115,8 +115,8 @@ func prependPath(env []string, dir string) []string {
 	old := ""
 	out := make([]string, 0, len(env)+1)
 	for _, e := range env {
-		if strings.HasPrefix(e, "PATH=") {
-			old = strings.TrimPrefix(e, "PATH=")
+		if after, ok := strings.CutPrefix(e, "PATH="); ok {
+			old = after
 			continue
 		}
 		out = append(out, e)
