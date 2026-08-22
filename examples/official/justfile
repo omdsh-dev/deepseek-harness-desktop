@@ -3,7 +3,7 @@ dep:
 
 clean:
     rm -f pnpm-lock.yaml
-    rm -rf node_modules/
+    pnpm clean
 
 dev *args: dep
     go tool dsh-web-desktopify dev . {{ args }}
